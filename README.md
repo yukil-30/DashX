@@ -1,2 +1,2 @@
 # DashX
-Final Project for Software Engineering
+Final Project for Software Engineering (E-Restaurant App)
