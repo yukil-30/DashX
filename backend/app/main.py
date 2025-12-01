@@ -157,7 +157,12 @@ async def root():
     }
 
 
-# Import routers when they exist
+# Import and register routers
+from app.routers import auth, account
+app.include_router(auth.router)
+app.include_router(account.router)
+
+# Future routers
 # from app.routers import menu, orders, ai
 # app.include_router(menu.router, prefix="/api/menu", tags=["Menu"])
 # app.include_router(orders.router, prefix="/api/orders", tags=["Orders"])

@@ -197,6 +197,160 @@ docker-compose exec postgres psql -U restaurant_user -d restaurant_db
 - `GET /health` - Health check with dependency status
 - `GET /` - API information
 
+### Authentication
+
+#### Register a New User
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newuser@example.com",
+    "password": "SecureP@ss123",
+    "display_name": "John Doe",
+    "email": "newuser@example.com",
+    "role_requested": "customer"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+```
+
+**Validation Rules:**
+- `password`: Minimum 8 characters, must contain at least one letter and one digit
+- `role_requested`: Only `customer` or `visitor` (employee roles require manager approval)
+
+#### Login
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newuser@example.com",
+    "password": "SecureP@ss123"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+```
+
+**Error Response (401 Unauthorized):**
+```json
+{
+  "detail": "Invalid credentials"
+}
+```
+
+#### Get Current User Profile
+```bash
+curl http://localhost:8000/auth/me \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "user": {
+    "id": 1,
+    "email": "newuser@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "display_name": "John Doe",
+    "account_type": "customer",
+    "balance_cents": 0,
+    "warnings": 0,
+    "is_blacklisted": false,
+    "free_delivery_credits": 0,
+    "created_at": "2025-12-01T10:30:00Z",
+    "last_login_at": "2025-12-01T10:30:00Z"
+  }
+}
+```
+
+#### Logout
+```bash
+curl -X POST http://localhost:8000/auth/logout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Successfully logged out",
+  "detail": "Please delete the access token on your client"
+}
+```
+
+### Account Management
+
+#### Get Account Balance
+```bash
+curl http://localhost:8000/account/balance \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "balance_cents": 5000,
+  "balance_formatted": "$50.00"
+}
+```
+
+#### Deposit Funds
+```bash
+curl -X POST http://localhost:8000/account/deposit \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{"amount_cents": 5000}'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Deposit successful",
+  "new_balance_cents": 5000,
+  "new_balance_formatted": "$50.00",
+  "transaction_id": 1
+}
+```
+
+**Error Response (422 Validation Error):**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "amount_cents"],
+      "msg": "Input should be greater than 0",
+      "type": "greater_than"
+    }
+  ]
+}
+```
+
+### Role-Based Access Control
+
+The API uses JWT-based authentication with role-based access control:
+
+| Role | Description | Self-Register |
+|------|-------------|---------------|
+| `visitor` | Browse-only access | ✅ Yes |
+| `customer` | Can place orders, deposit funds | ✅ Yes |
+| `vip` | Premium customer with perks | ❌ Upgraded by manager |
+| `chef` | Kitchen staff | ❌ Manager approval required |
+| `delivery` | Delivery personnel | ❌ Manager approval required |
+| `manager` | Full system access | ❌ Manager approval required |
+
 ### Menu (Coming Soon)
 - `GET /api/menu` - List menu items
 - `POST /api/menu` - Add menu item
@@ -221,6 +375,8 @@ docker-compose exec postgres psql -U restaurant_user -d restaurant_db
 | `DATABASE_URL` | Full database connection URL | auto-constructed |
 | `VITE_API_URL` | Backend API URL for frontend | `http://localhost:8000` |
 | `LLM_STUB_URL` | LLM service URL | `http://llm-stub:8001` |
+| `JWT_SECRET_KEY` | Secret key for JWT signing | dev-key (change in production!) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT token expiry in minutes | `60` |
 | `DEBUG` | Enable debug mode | `true` |
 
 ## 📊 Expected Service Logs

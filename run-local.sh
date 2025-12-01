@@ -111,19 +111,22 @@ wait_for_service "LLM Stub" "http://localhost:8001/health" || exit 1
 # Run migrations
 echo -e ""
 echo -e "${YELLOW}Running database migrations...${NC}"
-if docker-compose exec -T backend python -c "from app.database import init_db; init_db()" 2>/dev/null; then
+if docker-compose exec -T backend alembic upgrade head; then
     echo -e "${GREEN}✅ Migrations completed${NC}"
 else
-    echo -e "${YELLOW}⚠️  Migrations skipped (tables may already exist or models not defined yet)${NC}"
+    echo -e "${RED}❌ Migrations failed${NC}"
+    exit 1
 fi
 
 # Seed minimal data
 echo -e ""
 echo -e "${YELLOW}Seeding initial data...${NC}"
-if docker-compose exec -T backend python -c "from app.seed import seed_data; seed_data()" 2>/dev/null; then
+if cat backend/sql/seed_data.sql | docker-compose exec -T postgres psql -U restaurant_user -d restaurant_db > /dev/null 2>&1; then
     echo -e "${GREEN}✅ Data seeded${NC}"
 else
-    echo -e "${YELLOW}⚠️  Seeding skipped (will be implemented with database models)${NC}"
+    echo -e "${RED}❌ Seeding failed${NC}"
+    # Don't exit on seeding failure, as it might be due to duplicate keys if already seeded
+    echo -e "${YELLOW}   (This is normal if data was already seeded)${NC}"
 fi
 
 echo -e ""
