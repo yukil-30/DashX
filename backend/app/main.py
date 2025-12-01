@@ -21,8 +21,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Static files directory
-STATIC_DIR = Path("/app/static")
+# Static files directory - use local path if not in Docker
+if os.path.exists("/app"):
+    STATIC_DIR = Path("/app/static")
+else:
+    STATIC_DIR = Path(__file__).parent.parent / "static"
 STATIC_IMAGES_DIR = STATIC_DIR / "images"
 
 
@@ -169,11 +172,12 @@ async def root():
 
 
 # Import and register routers
-from app.routers import auth, account, dishes, home
+from app.routers import auth, account, dishes, home, orders
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(dishes.router)
 app.include_router(home.router)
+app.include_router(orders.router)
 
 # Mount static files for image serving
 if STATIC_DIR.exists():

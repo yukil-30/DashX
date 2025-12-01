@@ -525,10 +525,246 @@ curl http://localhost:8000/home \
 - `POST /api/menu` - Add menu item
 - `GET /api/menu/{id}` - Get menu item details
 
-### Orders (Coming Soon)
-- `POST /api/orders` - Create order
-- `GET /api/orders/{id}` - Get order status
-- `PUT /api/orders/{id}` - Update order
+### Orders API
+
+#### List Orders
+```bash
+# List user's own orders (customers)
+curl http://localhost:8000/orders \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Filter by status
+curl "http://localhost:8000/orders?status_filter=paid" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Pagination
+curl "http://localhost:8000/orders?limit=10&offset=0" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "accountID": 5,
+    "dateTime": "2025-12-01T10:30:00Z",
+    "finalCost": 2500,
+    "status": "paid",
+    "bidID": null,
+    "note": null,
+    "delivery_address": "123 Main St",
+    "delivery_fee": 500,
+    "subtotal_cents": 2000,
+    "discount_cents": 0,
+    "free_delivery_used": 0,
+    "ordered_dishes": [
+      {"DishID": 1, "quantity": 2, "dish_name": "Spaghetti", "dish_cost": 1000}
+    ]
+  }
+]
+```
+
+#### Create Order
+```bash
+curl -X POST http://localhost:8000/orders \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "items": [
+      {"dish_id": 1, "qty": 2},
+      {"dish_id": 3, "qty": 1}
+    ],
+    "delivery_address": "123 Main St, Apt 4B"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "message": "Order created successfully",
+  "order": {
+    "id": 1,
+    "accountID": 5,
+    "dateTime": "2025-12-01T10:30:00Z",
+    "finalCost": 4500,
+    "status": "paid",
+    "delivery_address": "123 Main St, Apt 4B",
+    "delivery_fee": 500,
+    "subtotal_cents": 4000,
+    "discount_cents": 0,
+    "free_delivery_used": 0,
+    "ordered_dishes": [...]
+  },
+  "balance_deducted": 4500,
+  "new_balance": 5500
+}
+```
+
+**Business Logic:**
+- **Subtotal**: Sum of (dish price × quantity) for all items
+- **Delivery Fee**: $5.00 (500 cents) standard
+- **VIP Discount**: 5% off subtotal for VIP customers
+- **VIP Free Delivery**: Every 3 completed orders earns 1 free delivery credit
+- **Deposit Check**: Order rejected if user balance < total cost
+
+**Error Response (402 Payment Required):**
+```json
+{
+  "detail": {
+    "error": "insufficient_deposit",
+    "warnings": 2,
+    "required_amount": 4500,
+    "current_balance": 1000,
+    "shortfall": 3500
+  }
+}
+```
+
+> **Note**: Each insufficient deposit attempt increments the user's warning count.
+
+#### Get Order Details
+```bash
+curl http://localhost:8000/orders/1 \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Authorization**: Order owner, delivery personnel, or manager can view.
+
+#### Submit Delivery Bid (Delivery Personnel Only)
+```bash
+curl -X POST http://localhost:8000/orders/1/bid \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer DELIVERY_TOKEN" \
+  -d '{"price_cents": 350}'
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
+  "deliveryPersonID": 4,
+  "orderID": 1,
+  "bidAmount": 350,
+  "delivery_person_email": "delivery@example.com"
+}
+```
+
+**Constraints:**
+- Only delivery personnel can bid
+- Order must be in "paid" status (open for bidding)
+- One bid per delivery person per order
+
+#### List Bids for Order
+```bash
+curl http://localhost:8000/orders/1/bids \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "order_id": 1,
+  "bids": [
+    {"id": 1, "deliveryPersonID": 4, "bidAmount": 350, "delivery_person_email": "fast@delivery.com"},
+    {"id": 2, "deliveryPersonID": 5, "bidAmount": 400, "delivery_person_email": "reliable@delivery.com"}
+  ]
+}
+```
+
+> Bids are sorted by bid amount (lowest first).
+
+#### Assign Delivery (Manager Only)
+```bash
+curl -X POST http://localhost:8000/orders/1/assign \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{
+    "delivery_id": 4,
+    "memo": "Priority delivery - VIP customer"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Delivery assigned successfully",
+  "order_id": 1,
+  "assigned_delivery_id": 4,
+  "bid_id": 1,
+  "delivery_fee": 350,
+  "order_status": "assigned"
+}
+```
+
+**Constraints:**
+- Only managers can assign delivery
+- Order must be in "paid" status
+- Delivery person must have submitted a bid
+
+### Order Status Flow
+
+```
+[created] → insufficient deposit → rejected (warning++)
+    ↓
+  [paid] → deposit deducted, open for bidding
+    ↓
+[assigned] → manager assigned delivery person
+    ↓
+[delivered] → (future: delivery confirmed)
+```
+
+### Transaction Audit Log
+
+All balance changes are recorded in the transactions table for audit purposes.
+
+#### Get Transaction History
+```bash
+curl http://localhost:8000/account/transactions \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Filter by type
+curl "http://localhost:8000/account/transactions?transaction_type=deposit" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "transactions": [
+    {
+      "id": 3,
+      "accountID": 5,
+      "amount_cents": -4500,
+      "balance_before": 10000,
+      "balance_after": 5500,
+      "transaction_type": "order_payment",
+      "reference_type": "order",
+      "reference_id": 1,
+      "description": "Payment for order #1",
+      "created_at": "2025-12-01T10:30:00Z"
+    },
+    {
+      "id": 2,
+      "accountID": 5,
+      "amount_cents": 5000,
+      "balance_before": 5000,
+      "balance_after": 10000,
+      "transaction_type": "deposit",
+      "reference_type": "deposit",
+      "reference_id": null,
+      "description": "Deposit of $50.00",
+      "created_at": "2025-12-01T09:00:00Z"
+    }
+  ],
+  "total": 2
+}
+```
+
+**Transaction Types:**
+- `deposit`: User deposited funds
+- `withdrawal`: User withdrew funds
+- `order_payment`: Payment for an order
 
 ### AI Features (Coming Soon)
 - `POST /api/ai/recommend` - Get menu recommendations
@@ -695,8 +931,13 @@ ORDER BY o.order_datetime DESC;
 - [x] Frontend React + TypeScript
 - [x] LLM Stub service
 - [x] Database models and migrations
+- [x] Authentication (JWT)
+- [x] Dishes API with images
+- [x] Order management API
+- [x] Delivery bidding system
+- [x] VIP discounts & free delivery
+- [x] Transaction audit logging
 - [ ] Menu management API
-- [ ] Order management API
 - [ ] AI recommendation integration
 - [ ] Replace LLM stub with Ollama
 - [ ] Kitchen dashboard UI

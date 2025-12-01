@@ -38,6 +38,8 @@ class Account(Base):
     type = Column(String(50), nullable=False, default='visitor')
     balance = Column(Integer, nullable=False, default=0)  # In cents
     wage = Column(Integer, nullable=True)  # Hourly wage in cents for employees
+    free_delivery_credits = Column(Integer, nullable=False, default=0)  # Free delivery credits for VIP
+    completed_orders_count = Column(Integer, nullable=False, default=0)  # Track orders for VIP free delivery
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="accounts")
@@ -49,6 +51,7 @@ class Account(Base):
     complaints_filed = relationship("Complaint", back_populates="filer_account", foreign_keys="Complaint.filer")
     delivery_rating = relationship("DeliveryRating", back_populates="account", uselist=False)
     closure_request = relationship("ClosureRequest", back_populates="account", uselist=False)
+    transactions = relationship("Transaction", back_populates="account")
 
 
 class Dish(Base):
@@ -78,10 +81,15 @@ class Order(Base):
     id = Column(Integer, primary_key=True)
     accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="RESTRICT"), nullable=False)
     dateTime = Column(Text, nullable=True)  # Stored as text per schema
-    finalCost = Column(Integer, nullable=False)  # Total in cents
+    finalCost = Column(Integer, nullable=False)  # Total in cents (items + delivery)
     status = Column(String(50), nullable=False, default='pending')
     bidID = Column(Integer, ForeignKey("bid.id", ondelete="SET NULL"), nullable=True)
     note = Column(Text, nullable=True)
+    delivery_address = Column(Text, nullable=True)  # Delivery address for the order
+    delivery_fee = Column(Integer, nullable=False, default=0)  # Delivery fee in cents
+    subtotal_cents = Column(Integer, nullable=False, default=0)  # Items total before discount/delivery
+    discount_cents = Column(Integer, nullable=False, default=0)  # VIP discount applied
+    free_delivery_used = Column(Integer, nullable=False, default=0)  # 1 if free delivery used
 
     # Relationships
     account = relationship("Account", back_populates="orders")
@@ -223,3 +231,22 @@ class OpenRequest(Base):
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="open_requests")
+
+
+class Transaction(Base):
+    """Audit log for all balance changes"""
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True)
+    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    amount_cents = Column(Integer, nullable=False)  # Positive for credit, negative for debit
+    balance_before = Column(Integer, nullable=False)  # Balance before this transaction
+    balance_after = Column(Integer, nullable=False)  # Balance after this transaction
+    transaction_type = Column(String(50), nullable=False)  # 'deposit', 'order_payment', 'refund', etc.
+    reference_type = Column(String(50), nullable=True)  # 'order', 'deposit', etc.
+    reference_id = Column(Integer, nullable=True)  # ID of the related order, etc.
+    description = Column(Text, nullable=True)
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    # Relationships
+    account = relationship("Account", back_populates="transactions")

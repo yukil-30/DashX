@@ -176,16 +176,23 @@ class DishRateResponse(BaseModel):
 # Order Schemas
 # ============================================================
 
-class OrderedDishRequest(BaseModel):
-    """Request for adding a dish to an order"""
-    DishID: int
-    quantity: int = Field(..., gt=0)
+class OrderItemRequest(BaseModel):
+    """Request for a single item in an order"""
+    dish_id: int = Field(..., description="Dish ID")
+    qty: int = Field(..., gt=0, description="Quantity")
 
 
 class OrderCreateRequest(BaseModel):
     """Request schema for creating an order"""
-    dishes: List[OrderedDishRequest]
-    note: Optional[str] = None
+    items: List[OrderItemRequest] = Field(..., min_length=1, description="List of items to order")
+    delivery_address: str = Field(..., min_length=1, max_length=500, description="Delivery address")
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class OrderedDishRequest(BaseModel):
+    """Request for adding a dish to an order"""
+    DishID: int
+    quantity: int = Field(..., gt=0)
 
 
 class OrderedDishResponse(BaseModel):
@@ -208,10 +215,32 @@ class OrderResponse(BaseModel):
     status: str
     bidID: Optional[int]
     note: Optional[str]
+    delivery_address: Optional[str]
+    delivery_fee: int
+    subtotal_cents: int
+    discount_cents: int
+    free_delivery_used: int
     ordered_dishes: List[OrderedDishResponse] = []
 
     class Config:
         from_attributes = True
+
+
+class OrderCreateResponse(BaseModel):
+    """Response after successfully creating an order"""
+    message: str
+    order: OrderResponse
+    balance_deducted: int
+    new_balance: int
+
+
+class InsufficientDepositError(BaseModel):
+    """Error response for insufficient deposit"""
+    error: Literal["insufficient_deposit"] = "insufficient_deposit"
+    warnings: int
+    required_amount: int
+    current_balance: int
+    shortfall: int
 
 
 # ============================================================
@@ -219,9 +248,8 @@ class OrderResponse(BaseModel):
 # ============================================================
 
 class BidCreateRequest(BaseModel):
-    """Request schema for creating a bid"""
-    orderID: int
-    bidAmount: int = Field(..., gt=0, description="Bid amount in cents")
+    """Request schema for creating a bid on an order"""
+    price_cents: int = Field(..., gt=0, description="Bid amount in cents")
 
 
 class BidResponse(BaseModel):
@@ -230,9 +258,32 @@ class BidResponse(BaseModel):
     deliveryPersonID: int
     orderID: int
     bidAmount: int
+    delivery_person_email: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class BidListResponse(BaseModel):
+    """List of bids for an order"""
+    order_id: int
+    bids: List[BidResponse]
+
+
+class AssignDeliveryRequest(BaseModel):
+    """Request for manager to assign delivery"""
+    delivery_id: int = Field(..., description="Delivery person account ID")
+    memo: Optional[str] = Field(None, max_length=500, description="Assignment memo/note")
+
+
+class AssignDeliveryResponse(BaseModel):
+    """Response after assigning delivery"""
+    message: str
+    order_id: int
+    assigned_delivery_id: int
+    bid_id: int
+    delivery_fee: int
+    order_status: str
 
 
 # ============================================================
@@ -412,3 +463,30 @@ class ErrorDetail(BaseModel):
     error: str
     detail: str
     status_code: int
+
+
+# ============================================================
+# Transaction Schemas (Audit Log)
+# ============================================================
+
+class TransactionResponse(BaseModel):
+    """Transaction audit log entry"""
+    id: int
+    accountID: int
+    amount_cents: int
+    balance_before: int
+    balance_after: int
+    transaction_type: str
+    reference_type: Optional[str]
+    reference_id: Optional[int]
+    description: Optional[str]
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class TransactionListResponse(BaseModel):
+    """List of transactions"""
+    transactions: List[TransactionResponse]
+    total: int
