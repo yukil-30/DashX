@@ -86,6 +86,7 @@ class Restaurant(Base):
     # Relationships
     accounts = relationship("Account", back_populates="restaurant")
     orders = relationship("Order", back_populates="restaurant")
+    dishes = relationship("Dish", back_populates="restaurant")
 
 
 class Account(Base):
@@ -114,6 +115,8 @@ class Account(Base):
     restaurant = relationship("Restaurant", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account")
     orders = relationship("Order", back_populates="account")
+    dishes_created = relationship("Dish", back_populates="chef", foreign_keys="Dish.chef_id")
+    dish_reviews = relationship("DishReview", back_populates="account")
 
 
 class Order(Base):
@@ -143,6 +146,86 @@ class Order(Base):
     account = relationship("Account", back_populates="orders")
     restaurant = relationship("Restaurant", back_populates="orders")
     transactions = relationship("Transaction", back_populates="order")
+    ordered_dishes = relationship("OrderedDish", back_populates="order", cascade="all, delete-orphan")
+    dish_reviews = relationship("DishReview", back_populates="order")
+
+
+class Dish(Base):
+    """Menu items available at the restaurant"""
+    __tablename__ = "dishes"
+
+    id = Column(Integer, primary_key=True)
+    restaurant_id = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=False)
+    chef_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    price = Column(Integer, nullable=False)  # In cents
+    picture = Column(Text)  # Main image URL/path
+    category = Column(String(100))
+    is_available = Column(Boolean, nullable=False, default=True)
+    is_special = Column(Boolean, nullable=False, default=False)
+    average_rating = Column(Numeric(3, 2), default=0.00)
+    review_count = Column(Integer, nullable=False, default=0)
+    order_count = Column(Integer, nullable=False, default=0)  # Denormalized for popularity
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    restaurant = relationship("Restaurant", back_populates="dishes")
+    chef = relationship("Account", back_populates="dishes_created", foreign_keys=[chef_id])
+    images = relationship("DishImage", back_populates="dish", cascade="all, delete-orphan")
+    reviews = relationship("DishReview", back_populates="dish", cascade="all, delete-orphan")
+    ordered_dishes = relationship("OrderedDish", back_populates="dish")
+
+
+class DishImage(Base):
+    """Multiple images for a dish"""
+    __tablename__ = "dish_images"
+
+    id = Column(Integer, primary_key=True)
+    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
+    image_url = Column(Text, nullable=False)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    dish = relationship("Dish", back_populates="images")
+
+
+class DishReview(Base):
+    """Customer reviews for dishes"""
+    __tablename__ = "dish_reviews"
+
+    id = Column(Integer, primary_key=True)
+    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"))
+    rating = Column(Integer, nullable=False)  # 1-5 stars
+    review_text = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    dish = relationship("Dish", back_populates="reviews")
+    account = relationship("Account", back_populates="dish_reviews")
+    order = relationship("Order", back_populates="dish_reviews")
+
+
+class OrderedDish(Base):
+    """Junction table for orders and dishes"""
+    __tablename__ = "ordered_dishes"
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="RESTRICT"), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    unit_price = Column(Integer, nullable=False)  # Price at time of order (cents)
+    special_instructions = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    order = relationship("Order", back_populates="ordered_dishes")
+    dish = relationship("Dish", back_populates="ordered_dishes")
 
 
 class Transaction(Base):

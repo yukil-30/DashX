@@ -1,0 +1,103 @@
+/* DishGrid Component Styles */
+
+.dish-grid-container {
+  width: 100%;
+  padding: 20px 0;
+}
+
+.dish-grid-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 20px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.dish-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+  justify-items: center;
+}
+
+.dish-grid-empty {
+  text-align: center;
+  padding: 40px 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  color: #7f8c8d;
+}
+
+.dish-grid-empty p {
+  margin: 0;
+  font-size: 16px;
+}
+
+/* Loading Skeleton Styles */
+.dish-card-skeleton {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  max-width: 320px;
+  width: 100%;
+}
+
+.skeleton-image {
+  width: 100%;
+  height: 180px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-content {
+  padding: 16px;
+}
+
+.skeleton-line {
+  height: 16px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.skeleton-line.title {
+  height: 20px;
+  width: 70%;
+}
+
+.skeleton-line.short {
+  width: 40%;
+  margin-bottom: 0;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dish-grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 16px;
+  }
+  
+  .dish-grid-title {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dish-grid {
+    grid-template-columns: 1fr;
+  }
+}

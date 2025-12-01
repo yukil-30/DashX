@@ -347,9 +347,178 @@ The API uses JWT-based authentication with role-based access control:
 | `visitor` | Browse-only access | ✅ Yes |
 | `customer` | Can place orders, deposit funds | ✅ Yes |
 | `vip` | Premium customer with perks | ❌ Upgraded by manager |
-| `chef` | Kitchen staff | ❌ Manager approval required |
+| `chef` | Kitchen staff, can manage dishes | ❌ Manager approval required |
 | `delivery` | Delivery personnel | ❌ Manager approval required |
 | `manager` | Full system access | ❌ Manager approval required |
+
+### Dishes API
+
+#### List Dishes (with Search & Filtering)
+```bash
+# List all dishes (paginated)
+curl "http://localhost:8000/dishes?page=1&per_page=20"
+
+# Search by name
+curl "http://localhost:8000/dishes?q=pasta"
+
+# Filter by chef
+curl "http://localhost:8000/dishes?chef_id=2"
+
+# Sort by popularity, rating, price, or newest
+curl "http://localhost:8000/dishes?order_by=popular"
+curl "http://localhost:8000/dishes?order_by=rating"
+curl "http://localhost:8000/dishes?order_by=price"
+```
+
+**Response (200 OK):**
+```json
+{
+  "dishes": [
+    {
+      "id": 1,
+      "name": "Spaghetti Carbonara",
+      "description": "Classic Italian pasta with eggs, cheese, and pancetta",
+      "price_cents": 1499,
+      "price_formatted": "$14.99",
+      "category": "main",
+      "is_available": true,
+      "is_special": false,
+      "average_rating": 4.5,
+      "review_count": 28,
+      "order_count": 156,
+      "chef_id": 2,
+      "chef_name": "Chef Antonio",
+      "images": [
+        {"id": 1, "image_url": "/static/images/carbonara.jpg", "display_order": 0}
+      ],
+      "picture": "/static/images/carbonara.jpg",
+      "created_at": "2025-12-01T10:00:00Z",
+      "updated_at": "2025-12-01T10:00:00Z"
+    }
+  ],
+  "total": 25,
+  "page": 1,
+  "per_page": 20,
+  "total_pages": 2
+}
+```
+
+#### Get Single Dish
+```bash
+curl http://localhost:8000/dishes/1
+```
+
+#### Create Dish (Chef/Manager Only)
+```bash
+curl -X POST http://localhost:8000/dishes \
+  -H "Authorization: Bearer YOUR_CHEF_TOKEN" \
+  -F "name=New Signature Dish" \
+  -F "description=A delicious new creation" \
+  -F "price_cents=1899" \
+  -F "category=main" \
+  -F "is_available=true" \
+  -F "images=@/path/to/image1.jpg" \
+  -F "images=@/path/to/image2.jpg"
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 10,
+  "name": "New Signature Dish",
+  "price_formatted": "$18.99",
+  ...
+}
+```
+
+#### Update Dish (Chef/Manager Only)
+```bash
+curl -X PUT http://localhost:8000/dishes/1 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_CHEF_TOKEN" \
+  -d '{
+    "name": "Updated Dish Name",
+    "price_cents": 1699,
+    "is_available": false
+  }'
+```
+
+#### Delete Dish (Chef/Manager Only)
+```bash
+curl -X DELETE http://localhost:8000/dishes/1 \
+  -H "Authorization: Bearer YOUR_CHEF_TOKEN"
+```
+
+#### Rate a Dish (Must Have Ordered It)
+```bash
+curl -X POST http://localhost:8000/dishes/1/rate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "rating": 5,
+    "order_id": 123,
+    "review_text": "Absolutely delicious!"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Rating submitted successfully",
+  "new_average_rating": 4.55,
+  "review_count": 29
+}
+```
+
+**Validation:**
+- `rating`: Must be 1-5
+- `order_id`: Must be a valid order belonging to the user
+- The dish must have been part of the specified order
+- Cannot rate the same dish twice for the same order
+
+#### Add Images to Dish
+```bash
+curl -X POST http://localhost:8000/dishes/1/images \
+  -H "Authorization: Bearer YOUR_CHEF_TOKEN" \
+  -F "images=@/path/to/new_image.jpg"
+```
+
+### Home (Personalized Recommendations)
+
+#### Get Personalized Home Content
+```bash
+# Unauthenticated: Returns global popular + top-rated dishes
+curl http://localhost:8000/home
+
+# Authenticated: Returns personalized recommendations
+curl http://localhost:8000/home \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "most_ordered": [
+    {"id": 1, "name": "Spaghetti Carbonara", "order_count": 156, ...},
+    {"id": 3, "name": "Margherita Pizza", "order_count": 142, ...},
+    {"id": 5, "name": "Tiramisu", "order_count": 98, ...}
+  ],
+  "top_rated": [
+    {"id": 2, "name": "Truffle Risotto", "average_rating": 4.9, ...},
+    {"id": 4, "name": "Seafood Linguine", "average_rating": 4.8, ...},
+    {"id": 1, "name": "Spaghetti Carbonara", "average_rating": 4.5, ...}
+  ],
+  "is_personalized": true
+}
+```
+
+**Personalization Logic:**
+- **For customers with order history:**
+  - `most_ordered`: Top 3 dishes this customer has ordered most frequently
+  - `top_rated`: Top 3 dishes this customer has rated highest
+- **For new users/visitors:**
+  - `most_ordered`: Global most popular dishes by order count
+  - `top_rated`: Global highest-rated dishes (minimum 1 review)
 
 ### Menu (Coming Soon)
 - `GET /api/menu` - List menu items

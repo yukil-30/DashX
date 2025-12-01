@@ -5,10 +5,12 @@ FastAPI Application Entry Point
 
 import os
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
 
@@ -19,6 +21,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Static files directory
+STATIC_DIR = Path("/app/static")
+STATIC_IMAGES_DIR = STATIC_DIR / "images"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,6 +33,11 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Local AI-enabled Restaurant API...")
     logger.info(f"   Debug mode: {os.getenv('DEBUG', 'true')}")
     logger.info(f"   LLM URL: {os.getenv('LLM_STUB_URL', 'http://llm-stub:8001')}")
+    
+    # Ensure static directories exist
+    STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"   Static images dir: {STATIC_IMAGES_DIR}")
+    
     yield
     # Shutdown
     logger.info("👋 Shutting down API...")
@@ -158,12 +169,21 @@ async def root():
 
 
 # Import and register routers
-from app.routers import auth, account
+from app.routers import auth, account, dishes, home
 app.include_router(auth.router)
 app.include_router(account.router)
+app.include_router(dishes.router)
+app.include_router(home.router)
+
+# Mount static files for image serving
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+else:
+    logger.warning(f"Static directory {STATIC_DIR} does not exist, creating it...")
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Future routers
-# from app.routers import menu, orders, ai
-# app.include_router(menu.router, prefix="/api/menu", tags=["Menu"])
+# from app.routers import orders, ai
 # app.include_router(orders.router, prefix="/api/orders", tags=["Orders"])
 # app.include_router(ai.router, prefix="/api/ai", tags=["AI"])
