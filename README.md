@@ -38,8 +38,19 @@ DashX/
 │   │   ├── main.py       # Main FastAPI application
 │   │   ├── database.py   # Database configuration
 │   │   └── seed.py       # Data seeding script
+│   ├── migrations/       # Alembic database migrations
+│   │   ├── env.py        # Alembic environment config
+│   │   └── versions/     # Migration scripts
+│   │       ├── 20251130_001_initial_schema.py
+│   │       └── 20251130_002_add_indices.py
+│   ├── sql/              # SQL scripts
+│   │   ├── seed_data.sql # Demo data for testing
+│   │   └── smoke_tests.sql # Schema verification
 │   ├── tests/
-│   │   └── test_health.py
+│   │   ├── test_health.py
+│   │   └── test_schema.py # Schema integrity tests
+│   ├── schema_documentation.md  # ER diagrams and design docs
+│   ├── alembic.ini       # Alembic configuration
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/             # React + TypeScript frontend
@@ -239,13 +250,126 @@ restaurant_frontend  |   ➜  Local:   http://localhost:3000/
 restaurant_llm_stub  | INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
 ```
 
+## 🗄️ Database Migrations
+
+The database schema is managed using Alembic migrations. All migrations are located in `backend/migrations/versions/`.
+
+### Migration Files
+
+| Migration | Description |
+|-----------|-------------|
+| `001_initial_schema` | Creates all core tables (accounts, dishes, orders, etc.) with constraints and triggers |
+| `002_add_indices` | Adds performance indices for common query patterns |
+
+### Applying Migrations
+
+**Option A: Using Docker Compose (Recommended)**
+```bash
+# Start services first
+docker-compose up -d postgres
+
+# Apply all migrations
+docker-compose exec backend alembic upgrade head
+
+# Load seed data
+docker-compose exec postgres psql -U restaurant_user -d restaurant_db -f /app/sql/seed_data.sql
+```
+
+**Option B: Local Development**
+```bash
+cd backend
+
+# Apply all migrations
+alembic upgrade head
+
+# Apply specific migration
+alembic upgrade 001_initial_schema
+alembic upgrade 002_add_indices
+
+# Load seed data
+psql -U restaurant_user -d restaurant_db -f sql/seed_data.sql
+```
+
+### Rollback Migrations
+```bash
+# Rollback one step
+docker-compose exec backend alembic downgrade -1
+
+# Rollback to base (removes all tables)
+docker-compose exec backend alembic downgrade base
+```
+
+### Verify Schema
+
+**Check tables exist:**
+```bash
+docker-compose exec postgres psql -U restaurant_user -d restaurant_db -c "\dt"
+```
+
+**Run smoke tests:**
+```bash
+docker-compose exec postgres psql -U restaurant_user -d restaurant_db -f /app/sql/smoke_tests.sql
+```
+
+**Run pytest schema tests:**
+```bash
+docker-compose exec backend pytest tests/test_schema.py -v
+```
+
+### Seed Data Contents
+
+The seed data (`sql/seed_data.sql`) includes:
+- 1 Restaurant (DashX Bistro)
+- 11 Accounts: 1 manager, 2 chefs, 2 delivery persons, 5 customers (1 VIP), 1 visitor
+- 5 Dishes with pricing and ratings
+- 5 Orders demonstrating various statuses
+- 6 Delivery bids
+- Sample complaints, transactions, and forum posts
+
+**Test account credentials** (all use password: `password123`):
+| Email | Role | Balance |
+|-------|------|---------|
+| `manager@dashxbistro.com` | Manager | $5,000 |
+| `vip.john@example.com` | VIP Customer | $1,000 |
+| `customer.alice@example.com` | Customer | $1.50 (for failure tests) |
+
+### Sample Queries
+
+**Top 5 most popular dishes:**
+```sql
+SELECT d.name, COALESCE(SUM(od.quantity), 0) as order_count
+FROM dishes d
+LEFT JOIN ordered_dishes od ON d.id = od.dish_id
+GROUP BY d.id
+ORDER BY order_count DESC
+LIMIT 5;
+```
+
+**Top 5 highest-rated dishes:**
+```sql
+SELECT name, average_rating, review_count
+FROM dishes
+ORDER BY average_rating DESC, review_count DESC
+LIMIT 5;
+```
+
+**Customer order history:**
+```sql
+SELECT o.id, o.status, o.final_cost/100.0 as total, o.order_datetime
+FROM orders o
+WHERE o.account_id = 6  -- VIP John
+ORDER BY o.order_datetime DESC;
+```
+
+---
+
 ## 🔄 Roadmap
 
 - [x] Project skeleton with Docker Compose
 - [x] Backend FastAPI with health check
 - [x] Frontend React + TypeScript
 - [x] LLM Stub service
-- [ ] Database models and migrations
+- [x] Database models and migrations
 - [ ] Menu management API
 - [ ] Order management API
 - [ ] AI recommendation integration
