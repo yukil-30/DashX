@@ -4,7 +4,6 @@ Endpoints for user registration, login, and profile management
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -36,7 +35,7 @@ async def register(
     Register a new user account.
     
     Only 'customer' and 'visitor' roles can be self-registered.
-    Employee roles (chef, delivery, manager) require manager approval.
+    Employee roles (chef, delivery, manager) require manager approval via openRequest.
     
     Returns a JWT access token upon successful registration.
     """
@@ -48,41 +47,21 @@ async def register(
             detail="Email already registered"
         )
     
-    # Also check username if different from email (username is email in our system)
-    if request.username != request.email:
-        existing_username = db.query(Account).filter(Account.email == request.username).first()
-        if existing_username:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Username already registered"
-            )
-    
-    # Parse display name into first/last name
-    name_parts = request.display_name.strip().split(" ", 1)
-    first_name = name_parts[0]
-    last_name = name_parts[1] if len(name_parts) > 1 else None
-    
-    # Create new user
+    # Create new user with schema fields
     try:
         new_user = Account(
             email=request.email,
-            password_hash=hash_password(request.password),
-            first_name=first_name,
-            last_name=last_name,
-            account_type=request.role_requested,
+            password=hash_password(request.password),
+            type=request.type,
             balance=0,
-            warnings=0,
-            is_blacklisted=False,
-            free_delivery_credits=0,
-            created_at=datetime.now(timezone.utc),
-            last_login_at=datetime.now(timezone.utc)
+            warnings=0
         )
         
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
         
-        logger.info(f"New user registered: {new_user.email} as {new_user.account_type}")
+        logger.info(f"New user registered: {new_user.email} as {new_user.type}")
         
     except IntegrityError:
         db.rollback()
@@ -93,7 +72,7 @@ async def register(
     
     # Generate access token
     access_token = create_access_token(
-        data={"sub": new_user.email, "user_id": new_user.id, "role": new_user.account_type}
+        data={"sub": new_user.email, "user_id": new_user.ID, "role": new_user.type}
     )
     
     return TokenResponse(
@@ -110,11 +89,9 @@ async def login(
 ):
     """
     Authenticate user and return JWT access token.
-    
-    Username is the user's email address.
     """
-    # Find user by email (username is email)
-    user = db.query(Account).filter(Account.email == request.username).first()
+    # Find user by email
+    user = db.query(Account).filter(Account.email == request.email).first()
     
     if not user:
         # Use same error message to prevent user enumeration
@@ -125,29 +102,18 @@ async def login(
         )
     
     # Verify password
-    if not verify_password(request.password, user.password_hash):
+    if not verify_password(request.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"}
         )
     
-    # Check if user is blacklisted
-    if user.is_blacklisted:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account has been suspended"
-        )
-    
-    # Update last login timestamp
-    user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
-    
     logger.info(f"User logged in: {user.email}")
     
     # Generate access token
     access_token = create_access_token(
-        data={"sub": user.email, "user_id": user.id, "role": user.account_type}
+        data={"sub": user.email, "user_id": user.ID, "role": user.type}
     )
     
     return TokenResponse(
@@ -166,24 +132,14 @@ async def get_current_user_profile(
     
     Requires valid JWT token in Authorization header.
     """
-    # Build display name from first/last name
-    display_name = current_user.first_name or ""
-    if current_user.last_name:
-        display_name = f"{display_name} {current_user.last_name}".strip()
-    
     profile = UserProfile(
-        id=current_user.id,
+        ID=current_user.ID,
         email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        display_name=display_name if display_name else current_user.email,
-        account_type=current_user.account_type,
-        balance_cents=current_user.balance,
+        type=current_user.type,
+        balance=current_user.balance,
         warnings=current_user.warnings,
-        is_blacklisted=current_user.is_blacklisted,
-        free_delivery_credits=current_user.free_delivery_credits,
-        created_at=current_user.created_at,
-        last_login_at=current_user.last_login_at
+        wage=current_user.wage,
+        restaurantID=current_user.restaurantID
     )
     
     return UserProfileResponse(user=profile)

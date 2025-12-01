@@ -1,153 +1,54 @@
 """
 SQLAlchemy ORM Models for DashX
+Matches exactly the authoritative database schema.
 """
 
-from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Text, DateTime, 
-    Numeric, ForeignKey, Enum as SQLEnum, CheckConstraint
+    Column, Integer, String, Text, Numeric, ForeignKey
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import JSONB, ENUM
 from app.database import Base
-import enum
-
-
-class AccountType(str, enum.Enum):
-    """Account type enum matching database ENUM"""
-    VISITOR = "visitor"
-    CUSTOMER = "customer"
-    VIP = "vip"
-    CHEF = "chef"
-    DELIVERY = "delivery"
-    MANAGER = "manager"
-
-
-class OrderStatus(str, enum.Enum):
-    """Order status enum matching database ENUM"""
-    PENDING = "pending"
-    CONFIRMED = "confirmed"
-    PREPARING = "preparing"
-    READY = "ready"
-    OUT_FOR_DELIVERY = "out_for_delivery"
-    DELIVERED = "delivered"
-    CANCELLED = "cancelled"
-    REFUNDED = "refunded"
-
-
-class TransactionType(str, enum.Enum):
-    """Transaction type enum matching database ENUM"""
-    DEPOSIT = "deposit"
-    WITHDRAWAL = "withdrawal"
-    ORDER_PAYMENT = "order_payment"
-    ORDER_REFUND = "order_refund"
-    WAGE_PAYMENT = "wage_payment"
-    TIP = "tip"
-    DELIVERY_FEE = "delivery_fee"
-
-
-# Use PostgreSQL ENUM type
-account_type_enum = ENUM(
-    'visitor', 'customer', 'vip', 'chef', 'delivery', 'manager',
-    name='account_type',
-    create_type=False  # Type already exists in database
-)
-
-order_status_enum = ENUM(
-    'pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery',
-    'delivered', 'cancelled', 'refunded',
-    name='order_status',
-    create_type=False
-)
-
-transaction_type_enum = ENUM(
-    'deposit', 'withdrawal', 'order_payment', 'order_refund',
-    'wage_payment', 'tip', 'delivery_fee',
-    name='transaction_type',
-    create_type=False
-)
 
 
 class Restaurant(Base):
-    """Restaurant entity - central to the system"""
+    """Restaurant entity"""
     __tablename__ = "restaurant"
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     address = Column(Text, nullable=False)
-    phone = Column(String(20))
-    email = Column(String(255))
-    description = Column(Text)
-    opening_hours = Column(JSONB)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     # Relationships
     accounts = relationship("Account", back_populates="restaurant")
-    orders = relationship("Order", back_populates="restaurant")
     dishes = relationship("Dish", back_populates="restaurant")
+    threads = relationship("Thread", back_populates="restaurant")
+    agent_queries = relationship("AgentQuery", back_populates="restaurant")
+    open_requests = relationship("OpenRequest", back_populates="restaurant")
 
 
 class Account(Base):
     """User accounts - visitors, customers, VIPs, employees"""
     __tablename__ = "accounts"
 
-    id = Column(Integer, primary_key=True)
-    restaurant_id = Column(Integer, ForeignKey("restaurant.id", ondelete="SET NULL"))
+    ID = Column(Integer, primary_key=True)
+    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="SET NULL"), nullable=True)
     email = Column(String(255), nullable=False, unique=True)
-    password_hash = Column(String(255), nullable=False)
-    first_name = Column(String(100))
-    last_name = Column(String(100))
-    phone = Column(String(20))
-    address = Column(Text)
-    account_type = Column(account_type_enum, nullable=False, default='visitor')
-    balance = Column(Integer, nullable=False, default=0)  # In cents
-    wage = Column(Integer)  # Hourly wage in cents for employees
+    password = Column(String(255), nullable=False)
     warnings = Column(Integer, nullable=False, default=0)
-    is_blacklisted = Column(Boolean, nullable=False, default=False)
-    free_delivery_credits = Column(Integer, nullable=False, default=0)
-    last_login_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    type = Column(String(50), nullable=False, default='visitor')
+    balance = Column(Integer, nullable=False, default=0)  # In cents
+    wage = Column(Integer, nullable=True)  # Hourly wage in cents for employees
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="accounts")
-    transactions = relationship("Transaction", back_populates="account")
     orders = relationship("Order", back_populates="account")
-    dishes_created = relationship("Dish", back_populates="chef", foreign_keys="Dish.chef_id")
-    dish_reviews = relationship("DishReview", back_populates="account")
-
-
-class Order(Base):
-    """Customer orders"""
-    __tablename__ = "orders"
-
-    id = Column(Integer, primary_key=True)
-    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False)
-    restaurant_id = Column(Integer, ForeignKey("restaurant.id", ondelete="RESTRICT"), nullable=False)
-    order_datetime = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    final_cost = Column(Integer, nullable=False)  # Total in cents
-    subtotal = Column(Integer, nullable=False)  # Before fees/discounts
-    delivery_fee = Column(Integer, nullable=False, default=0)
-    tip = Column(Integer, nullable=False, default=0)
-    discount = Column(Integer, nullable=False, default=0)
-    status = Column(order_status_enum, nullable=False, default='pending')
-    delivery_address = Column(Text)
-    note = Column(Text)
-    is_delivery = Column(Boolean, nullable=False, default=True)
-    estimated_ready_time = Column(DateTime(timezone=True))
-    actual_ready_time = Column(DateTime(timezone=True))
-    delivered_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-
-    # Relationships
-    account = relationship("Account", back_populates="orders")
-    restaurant = relationship("Restaurant", back_populates="orders")
-    transactions = relationship("Transaction", back_populates="order")
-    ordered_dishes = relationship("OrderedDish", back_populates="order", cascade="all, delete-orphan")
-    dish_reviews = relationship("DishReview", back_populates="order")
+    dishes_created = relationship("Dish", back_populates="chef", foreign_keys="Dish.chefID")
+    bids = relationship("Bid", back_populates="delivery_person")
+    posts = relationship("Post", back_populates="poster")
+    complaints_about = relationship("Complaint", back_populates="account", foreign_keys="Complaint.accountID")
+    complaints_filed = relationship("Complaint", back_populates="filer_account", foreign_keys="Complaint.filer")
+    delivery_rating = relationship("DeliveryRating", back_populates="account", uselist=False)
+    closure_request = relationship("ClosureRequest", back_populates="account", uselist=False)
 
 
 class Dish(Base):
@@ -155,94 +56,170 @@ class Dish(Base):
     __tablename__ = "dishes"
 
     id = Column(Integer, primary_key=True)
-    restaurant_id = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=False)
-    chef_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
+    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
-    description = Column(Text)
-    price = Column(Integer, nullable=False)  # In cents
-    picture = Column(Text)  # Main image URL/path
-    category = Column(String(100))
-    is_available = Column(Boolean, nullable=False, default=True)
-    is_special = Column(Boolean, nullable=False, default=False)
-    average_rating = Column(Numeric(3, 2), default=0.00)
-    review_count = Column(Integer, nullable=False, default=0)
-    order_count = Column(Integer, nullable=False, default=0)  # Denormalized for popularity
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    description = Column(Text, nullable=True)
+    cost = Column(Integer, nullable=False)  # In cents
+    picture = Column(Text, nullable=True)  # URL/path to image
+    average_rating = Column(Numeric(3, 2), nullable=True, default=0.00)
+    reviews = Column(Integer, nullable=False, default=0)
+    chefID = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="dishes")
-    chef = relationship("Account", back_populates="dishes_created", foreign_keys=[chef_id])
-    images = relationship("DishImage", back_populates="dish", cascade="all, delete-orphan")
-    reviews = relationship("DishReview", back_populates="dish", cascade="all, delete-orphan")
+    chef = relationship("Account", back_populates="dishes_created", foreign_keys=[chefID])
     ordered_dishes = relationship("OrderedDish", back_populates="dish")
 
 
-class DishImage(Base):
-    """Multiple images for a dish"""
-    __tablename__ = "dish_images"
+class Order(Base):
+    """Customer orders"""
+    __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True)
-    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
-    image_url = Column(Text, nullable=False)
-    display_order = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="RESTRICT"), nullable=False)
+    dateTime = Column(Text, nullable=True)  # Stored as text per schema
+    finalCost = Column(Integer, nullable=False)  # Total in cents
+    status = Column(String(50), nullable=False, default='pending')
+    bidID = Column(Integer, ForeignKey("bid.id", ondelete="SET NULL"), nullable=True)
+    note = Column(Text, nullable=True)
 
     # Relationships
-    dish = relationship("Dish", back_populates="images")
-
-
-class DishReview(Base):
-    """Customer reviews for dishes"""
-    __tablename__ = "dish_reviews"
-
-    id = Column(Integer, primary_key=True)
-    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
-    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"))
-    rating = Column(Integer, nullable=False)  # 1-5 stars
-    review_text = Column(Text)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-
-    # Relationships
-    dish = relationship("Dish", back_populates="reviews")
-    account = relationship("Account", back_populates="dish_reviews")
-    order = relationship("Order", back_populates="dish_reviews")
+    account = relationship("Account", back_populates="orders")
+    accepted_bid = relationship("Bid", back_populates="order_accepted", foreign_keys=[bidID])
+    ordered_dishes = relationship("OrderedDish", back_populates="order", cascade="all, delete-orphan")
+    bids = relationship("Bid", back_populates="order", foreign_keys="Bid.orderID")
 
 
 class OrderedDish(Base):
-    """Junction table for orders and dishes"""
+    """Junction table for orders and dishes - composite primary key"""
     __tablename__ = "ordered_dishes"
 
-    id = Column(Integer, primary_key=True)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="RESTRICT"), nullable=False)
+    DishID = Column(Integer, ForeignKey("dishes.id", ondelete="RESTRICT"), primary_key=True)
+    orderID = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), primary_key=True)
     quantity = Column(Integer, nullable=False)
-    unit_price = Column(Integer, nullable=False)  # Price at time of order (cents)
-    special_instructions = Column(Text)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     # Relationships
     order = relationship("Order", back_populates="ordered_dishes")
     dish = relationship("Dish", back_populates="ordered_dishes")
 
 
-class Transaction(Base):
-    """Financial audit trail"""
-    __tablename__ = "transactions"
+class Bid(Base):
+    """Delivery person bids on orders"""
+    __tablename__ = "bid"
 
     id = Column(Integer, primary_key=True)
-    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
-    transaction_type = Column(transaction_type_enum, nullable=False)
-    amount = Column(Integer, nullable=False)  # In cents, positive for credit, negative for debit
-    balance_before = Column(Integer, nullable=False)
-    balance_after = Column(Integer, nullable=False)
-    description = Column(Text)
-    reference_id = Column(String(100))
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    deliveryPersonID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    orderID = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    bidAmount = Column(Integer, nullable=False)  # In cents
 
     # Relationships
-    account = relationship("Account", back_populates="transactions")
-    order = relationship("Order", back_populates="transactions")
+    delivery_person = relationship("Account", back_populates="bids")
+    order = relationship("Order", back_populates="bids", foreign_keys=[orderID])
+    order_accepted = relationship("Order", back_populates="accepted_bid", foreign_keys="Order.bidID")
+
+
+class Thread(Base):
+    """Forum discussion threads"""
+    __tablename__ = "thread"
+
+    id = Column(Integer, primary_key=True)
+    topic = Column(String(255), nullable=False)
+    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=False)
+
+    # Relationships
+    restaurant = relationship("Restaurant", back_populates="threads")
+    posts = relationship("Post", back_populates="thread", cascade="all, delete-orphan")
+
+
+class Post(Base):
+    """Forum posts within threads"""
+    __tablename__ = "post"
+
+    id = Column(Integer, primary_key=True)
+    threadID = Column(Integer, ForeignKey("thread.id", ondelete="CASCADE"), nullable=False)
+    posterID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    title = Column(String(255), nullable=True)
+    body = Column(Text, nullable=False)
+    datetime = Column(Text, nullable=True)  # Stored as text per schema
+
+    # Relationships
+    thread = relationship("Thread", back_populates="posts")
+    poster = relationship("Account", back_populates="posts")
+
+
+class AgentQuery(Base):
+    """AI/LLM queries from users"""
+    __tablename__ = "agent_query"
+
+    id = Column(Integer, primary_key=True)
+    question = Column(Text, nullable=False)
+    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=True)
+
+    # Relationships
+    restaurant = relationship("Restaurant", back_populates="agent_queries")
+    answers = relationship("AgentAnswer", back_populates="query", cascade="all, delete-orphan")
+
+
+class AgentAnswer(Base):
+    """AI/LLM responses to queries"""
+    __tablename__ = "agent_answer"
+
+    ID = Column(Integer, primary_key=True)
+    queryID = Column(Integer, ForeignKey("agent_query.id", ondelete="CASCADE"), nullable=False)
+    answer = Column(Text, nullable=False)
+    average_rating = Column(Numeric(3, 2), nullable=True, default=0.00)
+    reviews = Column(Integer, nullable=False, default=0)
+
+    # Relationships
+    query = relationship("AgentQuery", back_populates="answers")
+
+
+class DeliveryRating(Base):
+    """Ratings for delivery personnel - accountID is PK"""
+    __tablename__ = "DeliveryRating"
+
+    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), primary_key=True)
+    averageRating = Column(Numeric(3, 2), nullable=True, default=0.00)
+    reviews = Column(Integer, nullable=False, default=0)
+
+    # Relationships
+    account = relationship("Account", back_populates="delivery_rating")
+
+
+class Complaint(Base):
+    """Complaints table"""
+    __tablename__ = "complaint"
+
+    id = Column(Integer, primary_key=True)
+    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    type = Column(String(50), nullable=False)
+    description = Column(Text, nullable=False)
+    filer = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+
+    # Relationships
+    account = relationship("Account", back_populates="complaints_about", foreign_keys=[accountID])
+    filer_account = relationship("Account", back_populates="complaints_filed", foreign_keys=[filer])
+
+
+class ClosureRequest(Base):
+    """Account closure/deletion requests - accountID is PK"""
+    __tablename__ = "closureRequest"
+
+    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), primary_key=True)
+    reason = Column(Text, nullable=True)
+
+    # Relationships
+    account = relationship("Account", back_populates="closure_request")
+
+
+class OpenRequest(Base):
+    """Applications to open/join a restaurant"""
+    __tablename__ = "openRequest"
+
+    id = Column(Integer, primary_key=True)  # Adding ID for proper querying
+    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String(255), nullable=False)
+    password = Column(String(255), nullable=False)
+
+    # Relationships
+    restaurant = relationship("Restaurant", back_populates="open_requests")

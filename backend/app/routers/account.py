@@ -4,13 +4,12 @@ Endpoints for account balance and deposit management
 """
 
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Account, Transaction
+from app.models import Account
 from app.schemas import DepositRequest, DepositResponse, BalanceResponse
 from app.auth import get_current_user
 
@@ -52,8 +51,6 @@ async def deposit(
     
     Amount must be positive (in cents).
     Maximum single deposit: $1,000,000.00 (100,000,000 cents)
-    
-    Creates a transaction record for audit trail.
     """
     # Validation already handled by Pydantic, but double-check
     if request.amount_cents <= 0:
@@ -62,27 +59,10 @@ async def deposit(
             detail="Deposit amount must be positive"
         )
     
-    # Record balance before
-    balance_before = current_user.balance
-    
     # Update balance
     current_user.balance += request.amount_cents
-    balance_after = current_user.balance
     
-    # Create transaction record for audit trail
-    transaction = Transaction(
-        account_id=current_user.id,
-        transaction_type="deposit",
-        amount=request.amount_cents,
-        balance_before=balance_before,
-        balance_after=balance_after,
-        description=f"Account deposit of {format_cents_to_dollars(request.amount_cents)}",
-        created_at=datetime.now(timezone.utc)
-    )
-    
-    db.add(transaction)
     db.commit()
-    db.refresh(transaction)
     db.refresh(current_user)
     
     logger.info(f"Deposit: user={current_user.email}, amount={request.amount_cents}, new_balance={current_user.balance}")
@@ -90,8 +70,7 @@ async def deposit(
     return DepositResponse(
         message="Deposit successful",
         new_balance_cents=current_user.balance,
-        new_balance_formatted=format_cents_to_dollars(current_user.balance),
-        transaction_id=transaction.id
+        new_balance_formatted=format_cents_to_dollars(current_user.balance)
     )
 
 
@@ -106,8 +85,6 @@ async def withdraw(
     
     Amount must be positive (in cents).
     Cannot withdraw more than current balance.
-    
-    Creates a transaction record for audit trail.
     """
     if request.amount_cents <= 0:
         raise HTTPException(
@@ -121,27 +98,10 @@ async def withdraw(
             detail=f"Insufficient funds. Current balance: {format_cents_to_dollars(current_user.balance)}"
         )
     
-    # Record balance before
-    balance_before = current_user.balance
-    
     # Update balance
     current_user.balance -= request.amount_cents
-    balance_after = current_user.balance
     
-    # Create transaction record for audit trail
-    transaction = Transaction(
-        account_id=current_user.id,
-        transaction_type="withdrawal",
-        amount=-request.amount_cents,  # Negative for withdrawals
-        balance_before=balance_before,
-        balance_after=balance_after,
-        description=f"Account withdrawal of {format_cents_to_dollars(request.amount_cents)}",
-        created_at=datetime.now(timezone.utc)
-    )
-    
-    db.add(transaction)
     db.commit()
-    db.refresh(transaction)
     db.refresh(current_user)
     
     logger.info(f"Withdrawal: user={current_user.email}, amount={request.amount_cents}, new_balance={current_user.balance}")
@@ -149,6 +109,5 @@ async def withdraw(
     return DepositResponse(
         message="Withdrawal successful",
         new_balance_cents=current_user.balance,
-        new_balance_formatted=format_cents_to_dollars(current_user.balance),
-        transaction_id=transaction.id
+        new_balance_formatted=format_cents_to_dollars(current_user.balance)
     )

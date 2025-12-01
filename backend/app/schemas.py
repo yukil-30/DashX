@@ -1,8 +1,8 @@
 """
 Pydantic schemas for request/response validation
+Matches exactly the authoritative database schema.
 """
 
-from datetime import datetime
 from typing import Optional, Literal, List
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -13,13 +13,11 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 class UserRegisterRequest(BaseModel):
     """Registration request schema"""
-    username: EmailStr = Field(..., description="Email address (used as username)")
-    password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 chars)")
-    display_name: str = Field(..., min_length=1, max_length=200, description="Display name")
     email: EmailStr = Field(..., description="Email address")
-    role_requested: Literal["customer", "visitor"] = Field(
+    password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 chars)")
+    type: Literal["customer", "visitor"] = Field(
         default="customer",
-        description="Role to register as (customer or visitor only)"
+        description="Account type (customer or visitor only for self-registration)"
     )
     
     @field_validator("password")
@@ -37,7 +35,7 @@ class UserRegisterRequest(BaseModel):
 
 class UserLoginRequest(BaseModel):
     """Login request schema"""
-    username: str = Field(..., description="Email address")
+    email: str = Field(..., description="Email address")
     password: str = Field(..., description="Password")
 
 
@@ -50,18 +48,13 @@ class TokenResponse(BaseModel):
 
 class UserProfile(BaseModel):
     """User profile response (no sensitive data)"""
-    id: int
+    ID: int
     email: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    display_name: Optional[str] = None
-    account_type: str
-    balance_cents: int = Field(..., description="Account balance in cents")
+    type: str
+    balance: int = Field(..., description="Account balance in cents")
     warnings: int = 0
-    is_blacklisted: bool = False
-    free_delivery_credits: int = 0
-    created_at: datetime
-    last_login_at: Optional[datetime] = None
+    wage: Optional[int] = None
+    restaurantID: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -92,31 +85,17 @@ class DepositResponse(BaseModel):
     message: str
     new_balance_cents: int
     new_balance_formatted: str
-    transaction_id: int
 
 
 # ============================================================
 # Dish Schemas
 # ============================================================
 
-class DishImageResponse(BaseModel):
-    """Dish image response schema"""
-    id: int
-    image_url: str
-    display_order: int
-
-    class Config:
-        from_attributes = True
-
-
 class DishBase(BaseModel):
     """Base dish schema with common fields"""
     name: str = Field(..., min_length=1, max_length=255, description="Dish name")
     description: Optional[str] = Field(None, max_length=2000, description="Dish description")
-    price_cents: int = Field(..., gt=0, le=100_000_00, description="Price in cents (max $1000)")
-    category: Optional[str] = Field(None, max_length=100, description="Dish category")
-    is_available: bool = Field(True, description="Whether dish is available for order")
-    is_special: bool = Field(False, description="Whether dish is a daily special")
+    cost: int = Field(..., gt=0, le=100_000_00, description="Cost in cents (max $1000)")
     
     @field_validator("name")
     @classmethod
@@ -142,7 +121,7 @@ class DishBase(BaseModel):
 
 
 class DishCreateRequest(DishBase):
-    """Request schema for creating a dish (without images - those come via multipart)"""
+    """Request schema for creating a dish"""
     pass
 
 
@@ -150,10 +129,8 @@ class DishUpdateRequest(BaseModel):
     """Request schema for updating a dish (all fields optional)"""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=2000)
-    price_cents: Optional[int] = Field(None, gt=0, le=100_000_00)
-    category: Optional[str] = Field(None, max_length=100)
-    is_available: Optional[bool] = None
-    is_special: Optional[bool] = None
+    cost: Optional[int] = Field(None, gt=0, le=100_000_00)
+    picture: Optional[str] = None
 
 
 class DishResponse(BaseModel):
@@ -161,20 +138,13 @@ class DishResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
-    price_cents: int
-    price_formatted: str
-    category: Optional[str]
-    is_available: bool
-    is_special: bool
+    cost: int
+    cost_formatted: str
+    picture: Optional[str] = None
     average_rating: float
-    review_count: int
-    order_count: int
-    chef_id: Optional[int]
-    chef_name: Optional[str] = None
-    images: List[DishImageResponse] = []
-    picture: Optional[str] = None  # Main image URL
-    created_at: datetime
-    updated_at: datetime
+    reviews: int
+    chefID: Optional[int]
+    restaurantID: int
 
     class Config:
         from_attributes = True
@@ -193,14 +163,224 @@ class DishRateRequest(BaseModel):
     """Request schema for rating a dish"""
     rating: int = Field(..., ge=1, le=5, description="Rating from 1-5 stars")
     order_id: int = Field(..., description="Order ID that included this dish")
-    review_text: Optional[str] = Field(None, max_length=2000, description="Optional review text")
 
 
 class DishRateResponse(BaseModel):
     """Response after rating a dish"""
     message: str
     new_average_rating: float
-    review_count: int
+    reviews: int
+
+
+# ============================================================
+# Order Schemas
+# ============================================================
+
+class OrderedDishRequest(BaseModel):
+    """Request for adding a dish to an order"""
+    DishID: int
+    quantity: int = Field(..., gt=0)
+
+
+class OrderCreateRequest(BaseModel):
+    """Request schema for creating an order"""
+    dishes: List[OrderedDishRequest]
+    note: Optional[str] = None
+
+
+class OrderedDishResponse(BaseModel):
+    """Response for an ordered dish"""
+    DishID: int
+    quantity: int
+    dish_name: Optional[str] = None
+    dish_cost: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OrderResponse(BaseModel):
+    """Order response schema"""
+    id: int
+    accountID: int
+    dateTime: Optional[str]
+    finalCost: int
+    status: str
+    bidID: Optional[int]
+    note: Optional[str]
+    ordered_dishes: List[OrderedDishResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Bid Schemas
+# ============================================================
+
+class BidCreateRequest(BaseModel):
+    """Request schema for creating a bid"""
+    orderID: int
+    bidAmount: int = Field(..., gt=0, description="Bid amount in cents")
+
+
+class BidResponse(BaseModel):
+    """Bid response schema"""
+    id: int
+    deliveryPersonID: int
+    orderID: int
+    bidAmount: int
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Thread/Post Schemas
+# ============================================================
+
+class ThreadCreateRequest(BaseModel):
+    """Request for creating a thread"""
+    topic: str = Field(..., min_length=1, max_length=255)
+    restaurantID: int
+
+
+class ThreadResponse(BaseModel):
+    """Thread response schema"""
+    id: int
+    topic: str
+    restaurantID: int
+
+    class Config:
+        from_attributes = True
+
+
+class PostCreateRequest(BaseModel):
+    """Request for creating a post"""
+    threadID: int
+    title: Optional[str] = Field(None, max_length=255)
+    body: str = Field(..., min_length=1)
+
+
+class PostResponse(BaseModel):
+    """Post response schema"""
+    id: int
+    threadID: int
+    posterID: int
+    title: Optional[str]
+    body: str
+    datetime: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Agent Query/Answer Schemas
+# ============================================================
+
+class AgentQueryRequest(BaseModel):
+    """Request for an AI query"""
+    question: str = Field(..., min_length=1)
+    restaurantID: Optional[int] = None
+
+
+class AgentQueryResponse(BaseModel):
+    """Agent query response"""
+    id: int
+    question: str
+    restaurantID: Optional[int]
+
+    class Config:
+        from_attributes = True
+
+
+class AgentAnswerResponse(BaseModel):
+    """Agent answer response"""
+    ID: int
+    queryID: int
+    answer: str
+    average_rating: float
+    reviews: int
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Complaint Schemas
+# ============================================================
+
+class ComplaintCreateRequest(BaseModel):
+    """Request for filing a complaint"""
+    accountID: int = Field(..., description="Account being complained about")
+    type: str = Field(..., description="Type of complaint")
+    description: str = Field(..., min_length=1)
+
+
+class ComplaintResponse(BaseModel):
+    """Complaint response schema"""
+    id: int
+    accountID: int
+    type: str
+    description: str
+    filer: int
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Delivery Rating Schemas
+# ============================================================
+
+class DeliveryRatingResponse(BaseModel):
+    """Delivery rating response"""
+    accountID: int
+    averageRating: float
+    reviews: int
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Closure Request Schemas
+# ============================================================
+
+class ClosureRequestCreate(BaseModel):
+    """Request for account closure"""
+    reason: Optional[str] = None
+
+
+class ClosureRequestResponse(BaseModel):
+    """Closure request response"""
+    accountID: int
+    reason: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# Open Request Schemas
+# ============================================================
+
+class OpenRequestCreate(BaseModel):
+    """Request to open/join a restaurant"""
+    restaurantID: int
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+
+
+class OpenRequestResponse(BaseModel):
+    """Open request response"""
+    id: int
+    restaurantID: int
+    email: str
+
+    class Config:
+        from_attributes = True
 
 
 # ============================================================

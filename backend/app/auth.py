@@ -22,8 +22,7 @@ SECURITY NOTES:
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Union
-from functools import wraps
+from typing import Optional, List
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -32,7 +31,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Account, AccountType
+from app.models import Account
 
 
 # ============================================================
@@ -156,13 +155,6 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     
-    # Check if user is blacklisted
-    if user.is_blacklisted:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account has been suspended"
-        )
-    
     return user
 
 
@@ -195,7 +187,7 @@ def require_role(required_role: str):
         def admin_endpoint(): ...
     """
     async def role_checker(current_user: Account = Depends(get_current_user)):
-        if current_user.account_type != required_role:
+        if current_user.type != required_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. Required role: {required_role}"
@@ -213,7 +205,7 @@ def require_any(allowed_roles: List[str]):
         def kitchen_endpoint(): ...
     """
     async def role_checker(current_user: Account = Depends(get_current_user)):
-        if current_user.account_type not in allowed_roles:
+        if current_user.type not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. Required roles: {', '.join(allowed_roles)}"
@@ -227,7 +219,7 @@ async def require_customer(current_user: Account = Depends(get_current_user)) ->
     Dependency to require customer, vip, or visitor role (ordering users)
     """
     allowed_types = ["customer", "vip", "visitor"]
-    if current_user.account_type not in allowed_types:
+    if current_user.type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Customer account required."
@@ -240,7 +232,7 @@ async def require_employee(current_user: Account = Depends(get_current_user)) ->
     Dependency to require employee role (chef, delivery, or manager)
     """
     employee_types = ["chef", "delivery", "manager"]
-    if current_user.account_type not in employee_types:
+    if current_user.type not in employee_types:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Employee account required."
@@ -252,7 +244,7 @@ async def require_manager(current_user: Account = Depends(get_current_user)) -> 
     """
     Dependency to require manager role
     """
-    if current_user.account_type != "manager":
+    if current_user.type != "manager":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Manager account required."
