@@ -618,6 +618,16 @@ class TestListBids:
         mock_bid1 = create_mock_bid(id=1, deliveryPersonID=2, bidAmount=300)
         mock_bid2 = create_mock_bid(id=2, deliveryPersonID=3, bidAmount=250)
         
+        # Mock delivery rating
+        from decimal import Decimal
+        mock_rating = MagicMock()
+        mock_rating.accountID = 2
+        mock_rating.averageRating = Decimal("4.5")
+        mock_rating.reviews = 10
+        mock_rating.total_deliveries = 50
+        mock_rating.on_time_deliveries = 45
+        mock_rating.avg_delivery_minutes = 25
+        
         # Setup mock query chains
         order_query = MagicMock()
         order_query.filter.return_value.first.return_value = mock_order
@@ -625,11 +635,17 @@ class TestListBids:
         bids_query = MagicMock()
         bids_query.options.return_value.filter.return_value.order_by.return_value.all.return_value = [mock_bid1, mock_bid2]
         
+        rating_query = MagicMock()
+        rating_query.filter.return_value.first.return_value = mock_rating
+        
         def query_side_effect(model):
+            from app.models import DeliveryRating
             if model == Order:
                 return order_query
             elif model == Bid:
                 return bids_query
+            elif model == DeliveryRating:
+                return rating_query
             return MagicMock()
         
         mock_db.query.side_effect = query_side_effect
@@ -664,16 +680,10 @@ class TestAssignDelivery:
         mock_bid = create_mock_bid(id=1, deliveryPersonID=2, bidAmount=300)
         
         # Setup query mocks
-        def filter_side_effect(*args, **kwargs):
-            mock_result = MagicMock()
-            return mock_result
-        
         query_mock = MagicMock()
         mock_db.query.return_value = query_mock
         
-        # First query: get order
-        # Second query: get delivery person
-        # Third query: get bid
+        # Query calls: Order, Account, Bid (for assignment), Bid (for lowest)
         order_filter = MagicMock()
         order_filter.first.return_value = mock_order
         
@@ -683,15 +693,18 @@ class TestAssignDelivery:
         bid_filter = MagicMock()
         bid_filter.first.return_value = mock_bid
         
-        query_mock.filter.side_effect = [order_filter, delivery_filter, bid_filter]
+        # For lowest bid check - same bid is lowest
+        lowest_bid_filter = MagicMock()
+        lowest_bid_filter.order_by.return_value.first.return_value = mock_bid
+        
+        query_mock.filter.side_effect = [order_filter, delivery_filter, bid_filter, lowest_bid_filter]
         
         app.dependency_overrides[require_manager] = lambda: mock_manager
         app.dependency_overrides[get_db] = lambda: mock_db
         
         try:
             response = client.post("/orders/1/assign", json={
-                "delivery_id": 2,
-                "memo": "Fast delivery please"
+                "delivery_id": 2
             })
             
             assert response.status_code == 200
@@ -700,6 +713,7 @@ class TestAssignDelivery:
             assert data["order_id"] == 1
             assert data["assigned_delivery_id"] == 2
             assert data["order_status"] == "assigned"
+            assert data["is_lowest_bid"] == True
         finally:
             app.dependency_overrides.clear()
 

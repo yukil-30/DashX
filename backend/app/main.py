@@ -172,12 +172,13 @@ async def root():
 
 
 # Import and register routers
-from app.routers import auth, account, dishes, home, orders
+from app.routers import auth, account, dishes, home, orders, bids
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(dishes.router)
 app.include_router(home.router)
 app.include_router(orders.router)
+app.include_router(bids.router)
 
 # Mount static files for image serving
 if STATIC_DIR.exists():

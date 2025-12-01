@@ -249,7 +249,9 @@ class InsufficientDepositError(BaseModel):
 
 class BidCreateRequest(BaseModel):
     """Request schema for creating a bid on an order"""
+    order_id: Optional[int] = Field(None, description="Order ID to bid on (for POST /bids)")
     price_cents: int = Field(..., gt=0, description="Bid amount in cents")
+    estimated_minutes: int = Field(30, gt=0, le=180, description="Estimated delivery time in minutes")
 
 
 class BidResponse(BaseModel):
@@ -258,22 +260,56 @@ class BidResponse(BaseModel):
     deliveryPersonID: int
     orderID: int
     bidAmount: int
+    estimated_minutes: int = 30
     delivery_person_email: Optional[str] = None
+    is_lowest: bool = False
 
     class Config:
         from_attributes = True
+
+
+class DeliveryPersonStats(BaseModel):
+    """Delivery person statistics for manager view"""
+    account_id: int
+    email: str
+    average_rating: float = 0.0
+    reviews: int = 0
+    total_deliveries: int = 0
+    on_time_deliveries: int = 0
+    on_time_percentage: float = 0.0
+    avg_delivery_minutes: int = 30
+    warnings: int = 0
+
+
+class BidWithStats(BaseModel):
+    """Bid with delivery person stats for manager view"""
+    id: int
+    deliveryPersonID: int
+    orderID: int
+    bidAmount: int
+    estimated_minutes: int = 30
+    is_lowest: bool = False
+    delivery_person: DeliveryPersonStats
 
 
 class BidListResponse(BaseModel):
     """List of bids for an order"""
     order_id: int
     bids: List[BidResponse]
+    lowest_bid_id: Optional[int] = None
+
+
+class BidListWithStatsResponse(BaseModel):
+    """List of bids with delivery person stats for manager"""
+    order_id: int
+    bids: List[BidWithStats]
+    lowest_bid_id: Optional[int] = None
 
 
 class AssignDeliveryRequest(BaseModel):
     """Request for manager to assign delivery"""
     delivery_id: int = Field(..., description="Delivery person account ID")
-    memo: Optional[str] = Field(None, max_length=500, description="Assignment memo/note")
+    memo: Optional[str] = Field(None, max_length=500, description="Assignment memo/note (required if not lowest bid)")
 
 
 class AssignDeliveryResponse(BaseModel):
@@ -284,6 +320,8 @@ class AssignDeliveryResponse(BaseModel):
     bid_id: int
     delivery_fee: int
     order_status: str
+    is_lowest_bid: bool = True
+    memo_saved: bool = False
 
 
 # ============================================================
@@ -390,6 +428,10 @@ class DeliveryRatingResponse(BaseModel):
     accountID: int
     averageRating: float
     reviews: int
+    total_deliveries: int = 0
+    on_time_deliveries: int = 0
+    on_time_percentage: float = 0.0
+    avg_delivery_minutes: int = 30
 
     class Config:
         from_attributes = True

@@ -636,7 +636,7 @@ curl http://localhost:8000/orders/1 \
 curl -X POST http://localhost:8000/orders/1/bid \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer DELIVERY_TOKEN" \
-  -d '{"price_cents": 350}'
+  -d '{"price_cents": 350, "estimated_minutes": 25}'
 ```
 
 **Response (201 Created):**
@@ -646,8 +646,18 @@ curl -X POST http://localhost:8000/orders/1/bid \
   "deliveryPersonID": 4,
   "orderID": 1,
   "bidAmount": 350,
-  "delivery_person_email": "delivery@example.com"
+  "estimated_minutes": 25,
+  "delivery_person_email": "delivery@example.com",
+  "is_lowest": true
 }
+```
+
+**Alternative: POST /bids (with order_id in body):**
+```bash
+curl -X POST http://localhost:8000/bids \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer DELIVERY_TOKEN" \
+  -d '{"order_id": 1, "price_cents": 350, "estimated_minutes": 25}'
 ```
 
 **Constraints:**
@@ -655,7 +665,7 @@ curl -X POST http://localhost:8000/orders/1/bid \
 - Order must be in "paid" status (open for bidding)
 - One bid per delivery person per order
 
-#### List Bids for Order
+#### List Bids for Order (with Delivery Stats)
 ```bash
 curl http://localhost:8000/orders/1/bids \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
@@ -665,14 +675,74 @@ curl http://localhost:8000/orders/1/bids \
 ```json
 {
   "order_id": 1,
+  "lowest_bid_id": 1,
   "bids": [
-    {"id": 1, "deliveryPersonID": 4, "bidAmount": 350, "delivery_person_email": "fast@delivery.com"},
-    {"id": 2, "deliveryPersonID": 5, "bidAmount": 400, "delivery_person_email": "reliable@delivery.com"}
+    {
+      "id": 1,
+      "deliveryPersonID": 4,
+      "bidAmount": 350,
+      "estimated_minutes": 25,
+      "is_lowest": true,
+      "delivery_person": {
+        "account_id": 4,
+        "email": "fast@delivery.com",
+        "average_rating": 4.8,
+        "reviews": 50,
+        "total_deliveries": 200,
+        "on_time_deliveries": 185,
+        "on_time_percentage": 92.5,
+        "avg_delivery_minutes": 22,
+        "warnings": 0
+      }
+    },
+    {
+      "id": 2,
+      "deliveryPersonID": 5,
+      "bidAmount": 400,
+      "estimated_minutes": 30,
+      "is_lowest": false,
+      "delivery_person": {
+        "account_id": 5,
+        "email": "reliable@delivery.com",
+        "average_rating": 4.5,
+        "reviews": 30,
+        "total_deliveries": 100,
+        "on_time_deliveries": 88,
+        "on_time_percentage": 88.0,
+        "avg_delivery_minutes": 28,
+        "warnings": 1
+      }
+    }
   ]
 }
 ```
 
-> Bids are sorted by bid amount (lowest first).
+> Bids are sorted by bid amount (lowest first). Each bid includes full delivery person stats for manager decision-making.
+
+#### Get Delivery Scoreboard (Manager Only)
+```bash
+curl "http://localhost:8000/bids/scoreboard?sort_by=rating" \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "account_id": 4,
+    "email": "fast@delivery.com",
+    "average_rating": 4.8,
+    "reviews": 50,
+    "total_deliveries": 200,
+    "on_time_deliveries": 185,
+    "on_time_percentage": 92.5,
+    "avg_delivery_minutes": 22,
+    "warnings": 0
+  }
+]
+```
+
+**Sort Options:** `rating`, `on_time`, `deliveries`
 
 #### Assign Delivery (Manager Only)
 ```bash
@@ -680,8 +750,7 @@ curl -X POST http://localhost:8000/orders/1/assign \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer MANAGER_TOKEN" \
   -d '{
-    "delivery_id": 4,
-    "memo": "Priority delivery - VIP customer"
+    "delivery_id": 4
   }'
 ```
 
@@ -693,14 +762,51 @@ curl -X POST http://localhost:8000/orders/1/assign \
   "assigned_delivery_id": 4,
   "bid_id": 1,
   "delivery_fee": 350,
-  "order_status": "assigned"
+  "order_status": "assigned",
+  "is_lowest_bid": true,
+  "memo_saved": false
 }
 ```
 
-**Constraints:**
+**Assigning Non-Lowest Bid (Requires Justification Memo):**
+```bash
+curl -X POST http://localhost:8000/orders/1/assign \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{
+    "delivery_id": 5,
+    "memo": "Better on-time record and higher rating justifies the $0.50 premium"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Delivery assigned successfully",
+  "order_id": 1,
+  "assigned_delivery_id": 5,
+  "bid_id": 2,
+  "delivery_fee": 400,
+  "order_status": "assigned",
+  "is_lowest_bid": false,
+  "memo_saved": true
+}
+```
+
+**Business Rules:**
 - Only managers can assign delivery
 - Order must be in "paid" status
 - Delivery person must have submitted a bid
+- **If non-lowest bid is chosen, memo is required** (saved to database for audit)
+
+### Manager UI
+
+The frontend includes a manager dashboard at `/manager/orders`:
+- View all orders awaiting assignment
+- See bids with delivery person stats (rating, on-time %, warnings)
+- Lowest bid highlighted in green
+- Click "Assign" to select a delivery person
+- Modal prompts for justification when assigning non-lowest bid
 
 ### Order Status Flow
 

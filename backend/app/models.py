@@ -90,6 +90,7 @@ class Order(Base):
     subtotal_cents = Column(Integer, nullable=False, default=0)  # Items total before discount/delivery
     discount_cents = Column(Integer, nullable=False, default=0)  # VIP discount applied
     free_delivery_used = Column(Integer, nullable=False, default=0)  # 1 if free delivery used
+    assignment_memo = Column(Text, nullable=True)  # Manager memo when non-lowest bid assigned
 
     # Relationships
     account = relationship("Account", back_populates="orders")
@@ -119,6 +120,7 @@ class Bid(Base):
     deliveryPersonID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
     orderID = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     bidAmount = Column(Integer, nullable=False)  # In cents
+    estimated_minutes = Column(Integer, nullable=False, default=30)  # Estimated delivery time
 
     # Relationships
     delivery_person = relationship("Account", back_populates="bids")
@@ -189,6 +191,9 @@ class DeliveryRating(Base):
     accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), primary_key=True)
     averageRating = Column(Numeric(3, 2), nullable=True, default=0.00)
     reviews = Column(Integer, nullable=False, default=0)
+    total_deliveries = Column(Integer, nullable=False, default=0)
+    on_time_deliveries = Column(Integer, nullable=False, default=0)
+    avg_delivery_minutes = Column(Integer, nullable=False, default=30)
 
     # Relationships
     account = relationship("Account", back_populates="delivery_rating")

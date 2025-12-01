@@ -30,12 +30,16 @@
 }
 
 .status-section,
-.features-section {
+.features-section,
+.login-section,
+.user-section {
   margin-bottom: 2rem;
 }
 
 .status-section h2,
-.features-section h2 {
+.features-section h2,
+.login-section h2,
+.user-section h2 {
   margin-bottom: 1rem;
   color: #667eea;
 }
@@ -126,6 +130,104 @@
   padding: 1rem;
   text-align: center;
   color: #888;
+}
+
+/* Login Form */
+.login-section {
+  background: #333;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 400px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.login-form input {
+  padding: 0.75rem 1rem;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #222;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.login-form button {
+  padding: 0.75rem 1rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.login-form button:hover:not(:disabled) {
+  background: #764ba2;
+}
+
+.login-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-error {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+/* User Section */
+.user-section {
+  background: #333;
+  padding: 2rem;
+  border-radius: 8px;
+}
+
+.user-section p {
+  margin-bottom: 1rem;
+}
+
+.manager-links {
+  margin-bottom: 1rem;
+}
+
+.nav-link {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: #4caf50;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.nav-link:hover {
+  background: #388e3c;
+}
+
+.logout-btn {
+  padding: 0.5rem 1rem;
+  background: #555;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.logout-btn:hover {
+  background: #666;
 }
 
 @media (max-width: 600px) {

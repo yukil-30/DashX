@@ -13,10 +13,11 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 
 from app.database import get_db
 from app.auth import get_current_user, require_manager
-from app.models import Account, Order, OrderedDish, Dish, Bid, Transaction
+from app.models import Account, Order, OrderedDish, Dish, Bid, Transaction, DeliveryRating
 from app.schemas import (
     OrderCreateRequest,
     OrderResponse,
@@ -26,6 +27,9 @@ from app.schemas import (
     BidCreateRequest,
     BidResponse,
     BidListResponse,
+    BidListWithStatsResponse,
+    BidWithStats,
+    DeliveryPersonStats,
     AssignDeliveryRequest,
     AssignDeliveryResponse,
 )
@@ -435,22 +439,32 @@ async def create_bid(
     bid = Bid(
         deliveryPersonID=current_user.ID,
         orderID=order_id,
-        bidAmount=bid_request.price_cents
+        bidAmount=bid_request.price_cents,
+        estimated_minutes=bid_request.estimated_minutes
     )
     db.add(bid)
     db.commit()
     db.refresh(bid)
+    
+    # Check if this is the lowest bid
+    lowest_bid = db.query(Bid).filter(
+        Bid.orderID == order_id
+    ).order_by(Bid.bidAmount.asc()).first()
+    
+    is_lowest = lowest_bid is not None and lowest_bid.id == bid.id
     
     return BidResponse(
         id=bid.id,
         deliveryPersonID=bid.deliveryPersonID,
         orderID=bid.orderID,
         bidAmount=bid.bidAmount,
-        delivery_person_email=current_user.email
+        estimated_minutes=bid.estimated_minutes,
+        delivery_person_email=current_user.email,
+        is_lowest=is_lowest
     )
 
 
-@router.get("/{order_id}/bids", response_model=BidListResponse)
+@router.get("/{order_id}/bids", response_model=BidListWithStatsResponse)
 async def list_bids(
     order_id: int,
     db: Session = Depends(get_db),
@@ -458,6 +472,7 @@ async def list_bids(
 ):
     """
     List all bids for an order, sorted by bid amount (lowest first).
+    Includes delivery person stats for manager decision-making.
     Accessible by order owner, manager, or delivery personnel.
     """
     # Get order
@@ -484,20 +499,49 @@ async def list_bids(
         joinedload(Bid.delivery_person)
     ).filter(Bid.orderID == order_id).order_by(Bid.bidAmount.asc()).all()
     
-    bid_responses = [
-        BidResponse(
+    # Find the lowest bid
+    lowest_bid_id = bids[0].id if bids else None
+    
+    # Build response with stats for each delivery person
+    bid_responses = []
+    for bid in bids:
+        # Get delivery rating for this person
+        delivery_rating = db.query(DeliveryRating).filter(
+            DeliveryRating.accountID == bid.deliveryPersonID
+        ).first()
+        
+        # Calculate on-time percentage
+        on_time_pct = 0.0
+        if delivery_rating and delivery_rating.total_deliveries > 0:
+            on_time_pct = (delivery_rating.on_time_deliveries / delivery_rating.total_deliveries) * 100
+        
+        delivery_person = bid.delivery_person
+        stats = DeliveryPersonStats(
+            account_id=delivery_person.ID if delivery_person else bid.deliveryPersonID,
+            email=delivery_person.email if delivery_person else "Unknown",
+            average_rating=float(delivery_rating.averageRating) if delivery_rating else 0.0,
+            reviews=delivery_rating.reviews if delivery_rating else 0,
+            total_deliveries=delivery_rating.total_deliveries if delivery_rating else 0,
+            on_time_deliveries=delivery_rating.on_time_deliveries if delivery_rating else 0,
+            on_time_percentage=round(on_time_pct, 1),
+            avg_delivery_minutes=delivery_rating.avg_delivery_minutes if delivery_rating else 30,
+            warnings=delivery_person.warnings if delivery_person else 0
+        )
+        
+        bid_responses.append(BidWithStats(
             id=bid.id,
             deliveryPersonID=bid.deliveryPersonID,
             orderID=bid.orderID,
             bidAmount=bid.bidAmount,
-            delivery_person_email=bid.delivery_person.email if bid.delivery_person else None
-        )
-        for bid in bids
-    ]
+            estimated_minutes=bid.estimated_minutes,
+            is_lowest=(bid.id == lowest_bid_id),
+            delivery_person=stats
+        ))
     
-    return BidListResponse(
+    return BidListWithStatsResponse(
         order_id=order_id,
-        bids=bid_responses
+        bids=bid_responses,
+        lowest_bid_id=lowest_bid_id
     )
 
 
@@ -511,6 +555,7 @@ async def assign_delivery(
     """
     Manager assigns a delivery person to an order.
     The delivery person must have a bid on this order.
+    If the chosen bid is not the lowest, memo is required and saved to DB.
     Updates order status to 'assigned' and sets bidID.
     """
     # Get order
@@ -553,10 +598,30 @@ async def assign_delivery(
             detail="Delivery person has not submitted a bid for this order"
         )
     
+    # Find the lowest bid for this order
+    lowest_bid = db.query(Bid).filter(
+        Bid.orderID == order_id
+    ).order_by(Bid.bidAmount.asc()).first()
+    
+    is_lowest_bid = (lowest_bid and lowest_bid.id == bid.id)
+    memo_saved = False
+    
+    # If not the lowest bid, memo is required
+    if not is_lowest_bid:
+        if not assign_request.memo or not assign_request.memo.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Memo is required when assigning a non-lowest bid. Please provide a justification."
+            )
+        # Save the memo to the order
+        order.assignment_memo = assign_request.memo.strip()
+        memo_saved = True
+    
     # Update order
     order.bidID = bid.id
     order.status = "assigned"
     if assign_request.memo:
+        # Add to note as well for visibility
         order.note = (order.note or "") + f"\n[Manager Assignment]: {assign_request.memo}"
     
     db.commit()
@@ -568,5 +633,7 @@ async def assign_delivery(
         assigned_delivery_id=assign_request.delivery_id,
         bid_id=bid.id,
         delivery_fee=bid.bidAmount,
-        order_status=order.status
+        order_status=order.status,
+        is_lowest_bid=is_lowest_bid,
+        memo_saved=memo_saved
     )
