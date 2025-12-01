@@ -3,16 +3,40 @@ Local AI-enabled Restaurant Backend
 FastAPI Application Entry Point
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import httpx
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG if os.getenv("DEBUG", "true").lower() == "true" else logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler for startup/shutdown events."""
+    # Startup
+    logger.info("🚀 Starting Local AI-enabled Restaurant API...")
+    logger.info(f"   Debug mode: {os.getenv('DEBUG', 'true')}")
+    logger.info(f"   LLM URL: {os.getenv('LLM_STUB_URL', 'http://llm-stub:8001')}")
+    yield
+    # Shutdown
+    logger.info("👋 Shutting down API...")
+
 
 app = FastAPI(
     title="Local AI-enabled Restaurant API",
     description="Backend API for the AI-powered restaurant management system",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 # CORS middleware for frontend communication
@@ -40,6 +64,35 @@ class ErrorResponse(BaseModel):
     status_code: int
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for unhandled errors."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "detail": str(exc) if os.getenv("DEBUG", "true").lower() == "true" else "An unexpected error occurred",
+            "status_code": 500,
+            "path": str(request.url.path)
+        }
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Custom HTTP exception handler with consistent format."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+            "path": str(request.url.path)
+        }
+    )
+
+
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
     """
@@ -49,17 +102,21 @@ async def health_check():
     db_status = "not_checked"
     llm_status = "not_checked"
     
-    # Check database connection (will be implemented with actual DB)
+    # Check database connection
     try:
         from app.database import check_connection
         if check_connection():
             db_status = "connected"
+            logger.debug("Database health check: connected")
         else:
             db_status = "disconnected"
+            logger.warning("Database health check: disconnected")
     except ImportError:
         db_status = "not_configured"
+        logger.debug("Database module not configured")
     except Exception as e:
         db_status = f"error: {str(e)}"
+        logger.error(f"Database health check error: {e}")
     
     # Check LLM stub connection
     llm_url = os.getenv("LLM_STUB_URL", "http://llm-stub:8001")
@@ -68,14 +125,19 @@ async def health_check():
             response = await client.get(f"{llm_url}/health")
             if response.status_code == 200:
                 llm_status = "connected"
+                logger.debug("LLM stub health check: connected")
             else:
                 llm_status = f"unhealthy: {response.status_code}"
+                logger.warning(f"LLM stub returned status {response.status_code}")
     except httpx.ConnectError:
         llm_status = "connection_failed"
+        logger.warning(f"LLM stub connection failed at {llm_url}")
     except httpx.TimeoutException:
         llm_status = "timeout"
+        logger.warning(f"LLM stub request timed out at {llm_url}")
     except Exception as e:
         llm_status = f"error: {str(e)}"
+        logger.error(f"LLM stub health check error: {e}")
     
     return HealthResponse(
         status="ok",
@@ -90,7 +152,8 @@ async def root():
     return {
         "message": "Welcome to Local AI-enabled Restaurant API",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "version": "0.1.0"
     }
 
 

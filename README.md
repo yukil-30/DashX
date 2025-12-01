@@ -253,6 +253,92 @@ restaurant_llm_stub  | INFO:     Uvicorn running on http://0.0.0.0:8001 (Press C
 - [ ] Kitchen dashboard UI
 - [ ] Real-time order updates (WebSocket)
 
+## ❓ Troubleshooting
+
+### Docker Issues
+
+**"Cannot connect to Docker daemon"**
+```bash
+# Make sure Docker Desktop is running
+# On macOS: open Docker Desktop from Applications
+# On Linux: sudo systemctl start docker
+```
+
+**"Port already in use"**
+```bash
+# Find what's using the port
+lsof -i :8000  # for backend
+lsof -i :3000  # for frontend
+lsof -i :5432  # for postgres
+
+# Kill the process or change ports in docker-compose.yml
+```
+
+**"Build failed"**
+```bash
+# Clean rebuild
+docker-compose down -v
+docker-compose build --no-cache
+docker-compose up
+```
+
+### Service Not Starting
+
+**Backend won't start**
+```bash
+# Check logs
+docker-compose logs backend
+
+# Common issues:
+# - Database not ready: wait a few seconds and try again
+# - Import error: check requirements.txt is correct
+```
+
+**Frontend shows blank page**
+```bash
+# Check if API URL is correct
+# In browser console, check for CORS errors
+# Verify VITE_API_URL in .env matches your setup
+```
+
+**Database connection failed**
+```bash
+# Check if postgres is running
+docker-compose ps postgres
+
+# Connect manually to verify
+docker-compose exec postgres psql -U restaurant_user -d restaurant_db
+
+# Reset database
+docker-compose down -v  # Warning: deletes all data
+docker-compose up
+```
+
+### Test Failures
+
+**"Container not running" errors**
+```bash
+# Start services first
+./run-local.sh
+
+# Then run tests
+./run-tests.sh
+```
+
+**Frontend tests fail**
+```bash
+# Install dependencies inside container
+docker-compose exec frontend npm install
+docker-compose exec frontend npm test
+```
+
+### Common Solutions
+
+1. **Full reset**: `docker-compose down -v && docker-compose up --build`
+2. **Check logs**: `docker-compose logs -f [service_name]`
+3. **Restart single service**: `docker-compose restart backend`
+4. **Rebuild single service**: `docker-compose up --build backend`
+
 ## 📄 License
 
 This project is for educational purposes as part of a Software Engineering course.
