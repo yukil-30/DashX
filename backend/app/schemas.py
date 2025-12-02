@@ -401,22 +401,129 @@ class AgentAnswerResponse(BaseModel):
 # ============================================================
 
 class ComplaintCreateRequest(BaseModel):
-    """Request for filing a complaint"""
-    accountID: int = Field(..., description="Account being complained about")
-    type: str = Field(..., description="Type of complaint")
-    description: str = Field(..., min_length=1)
+    """Request for filing a complaint or compliment"""
+    from_user_id: Optional[int] = Field(None, description="User filing the complaint (auto-set from token)")
+    about_user_id: Optional[int] = Field(None, description="User being complained about (null for general)")
+    order_id: Optional[int] = Field(None, description="Related order (optional)")
+    type: Literal["complaint", "compliment"] = Field(..., description="Type of feedback")
+    text: str = Field(..., min_length=1, max_length=2000, description="Complaint/compliment description")
 
 
 class ComplaintResponse(BaseModel):
     """Complaint response schema"""
     id: int
-    accountID: int
+    accountID: Optional[int]
     type: str
     description: str
     filer: int
+    filer_email: Optional[str] = None
+    about_email: Optional[str] = None
+    order_id: Optional[int] = None
+    status: str = "pending"
+    resolution: Optional[str] = None
+    resolved_by: Optional[int] = None
+    resolved_at: Optional[str] = None
+    created_at: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class ComplaintListResponse(BaseModel):
+    """List of complaints"""
+    complaints: List[ComplaintResponse]
+    total: int
+    unresolved_count: int
+
+
+class ComplaintResolveRequest(BaseModel):
+    """Request to resolve a complaint"""
+    resolution: Literal["dismissed", "warning_issued"] = Field(
+        ..., 
+        description="dismissed = without merit (complainant gets warning), warning_issued = valid complaint"
+    )
+    notes: Optional[str] = Field(None, max_length=1000, description="Resolution notes")
+
+
+class ComplaintResolveResponse(BaseModel):
+    """Response after resolving a complaint"""
+    message: str
+    complaint_id: int
+    resolution: str
+    warning_applied_to: Optional[int] = None
+    warning_count: Optional[int] = None
+    account_status_changed: Optional[str] = None
+    audit_log_id: int
+
+
+# ============================================================
+# Audit Log Schemas
+# ============================================================
+
+class AuditLogResponse(BaseModel):
+    """Audit log entry response"""
+    id: int
+    action_type: str
+    actor_id: Optional[int]
+    target_id: Optional[int]
+    complaint_id: Optional[int]
+    order_id: Optional[int]
+    details: Optional[dict] = None
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class AuditLogListResponse(BaseModel):
+    """List of audit log entries"""
+    entries: List[AuditLogResponse]
+    total: int
+
+
+# ============================================================
+# Manager Notification Schemas
+# ============================================================
+
+class ManagerNotificationResponse(BaseModel):
+    """Manager notification response"""
+    id: int
+    notification_type: str
+    title: str
+    message: str
+    related_account_id: Optional[int]
+    related_order_id: Optional[int]
+    is_read: bool
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ManagerNotificationListResponse(BaseModel):
+    """List of manager notifications"""
+    notifications: List[ManagerNotificationResponse]
+    total: int
+    unread_count: int
+
+
+# ============================================================
+# Login Response with Warnings
+# ============================================================
+
+class LoginWarningInfo(BaseModel):
+    """Warning information returned on login"""
+    warnings_count: int
+    warning_message: Optional[str] = None
+    is_near_threshold: bool = False
+
+
+class TokenResponseWithWarnings(BaseModel):
+    """JWT token response with warning info"""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int = Field(..., description="Token expiry in seconds")
+    warning_info: Optional[LoginWarningInfo] = None
 
 
 # ============================================================

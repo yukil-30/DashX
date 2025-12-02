@@ -5,14 +5,18 @@ FastAPI Application Entry Point
 
 import os
 import logging
+import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
+
+from app.auth import require_manager
+from app.models import Account
 
 # Configure logging
 logging.basicConfig(
@@ -41,8 +45,22 @@ async def lifespan(app: FastAPI):
     STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"   Static images dir: {STATIC_IMAGES_DIR}")
     
+    # Start background tasks
+    background_task = None
+    if os.getenv("ENABLE_BACKGROUND_TASKS", "true").lower() == "true":
+        from app.background_tasks import periodic_performance_evaluation
+        background_task = asyncio.create_task(periodic_performance_evaluation())
+        logger.info("   Background performance evaluation task started")
+    
     yield
+    
     # Shutdown
+    if background_task:
+        background_task.cancel()
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            pass
     logger.info("👋 Shutting down API...")
 
 
@@ -172,13 +190,32 @@ async def root():
 
 
 # Import and register routers
-from app.routers import auth, account, dishes, home, orders, bids
+from app.routers import auth, account, dishes, home, orders, bids, reputation
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(dishes.router)
 app.include_router(home.router)
 app.include_router(orders.router)
 app.include_router(bids.router)
+app.include_router(reputation.router)
+
+
+@app.post("/admin/evaluate-performance", tags=["Admin"])
+async def trigger_performance_evaluation(
+    current_user: Account = Depends(require_manager)
+):
+    """
+    Manually trigger performance evaluation for all chefs and delivery personnel.
+    Manager only.
+    """
+    from app.background_tasks import run_immediate_evaluation
+    
+    results = run_immediate_evaluation()
+    
+    return {
+        "message": "Performance evaluation completed",
+        "results": results
+    }
 
 # Mount static files for image serving
 if STATIC_DIR.exists():

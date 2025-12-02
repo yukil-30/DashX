@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import Account
+from app.models import Account, Blacklist
 from app.schemas import (
     UserRegisterRequest, UserLoginRequest, TokenResponse,
-    UserProfile, UserProfileResponse
+    UserProfile, UserProfileResponse, TokenResponseWithWarnings, LoginWarningInfo
 )
 from app.auth import (
     hash_password, verify_password, create_access_token,
@@ -82,14 +82,24 @@ async def register(
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponseWithWarnings)
 async def login(
     request: UserLoginRequest,
     db: Session = Depends(get_db)
 ):
     """
     Authenticate user and return JWT access token.
+    Also returns warning information if the user has any warnings.
     """
+    # Check if email is blacklisted
+    blacklisted = db.query(Blacklist).filter(Blacklist.email == request.email).first()
+    if blacklisted:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been permanently suspended",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
     # Find user by email
     user = db.query(Account).filter(Account.email == request.email).first()
     
@@ -98,6 +108,22 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Check if user is blacklisted
+    if user.is_blacklisted:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been permanently suspended",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Check if employee is fired
+    if user.is_fired:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This employee account has been terminated",
             headers={"WWW-Authenticate": "Bearer"}
         )
     
@@ -116,10 +142,39 @@ async def login(
         data={"sub": user.email, "user_id": user.ID, "role": user.type}
     )
     
-    return TokenResponse(
+    # Build warning info
+    warning_info = None
+    if user.warnings > 0:
+        # Determine thresholds based on user type
+        if user.type == "vip":
+            threshold = 2
+            is_near = user.warnings >= 1
+        elif user.type in ["customer", "visitor"]:
+            threshold = 3
+            is_near = user.warnings >= 2
+        else:
+            threshold = None
+            is_near = False
+        
+        if threshold:
+            warning_message = f"You have {user.warnings} warning(s). "
+            if user.warnings >= threshold - 1:
+                if user.type == "vip":
+                    warning_message += "One more warning will result in VIP status removal."
+                else:
+                    warning_message += "Reaching 3 warnings will result in account suspension."
+            
+            warning_info = LoginWarningInfo(
+                warnings_count=user.warnings,
+                warning_message=warning_message,
+                is_near_threshold=is_near
+            )
+    
+    return TokenResponseWithWarnings(
         access_token=access_token,
         token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        warning_info=warning_info
     )
 
 

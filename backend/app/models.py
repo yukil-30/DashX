@@ -4,8 +4,9 @@ Matches exactly the authoritative database schema.
 """
 
 from sqlalchemy import (
-    Column, Integer, String, Text, Numeric, ForeignKey
+    Column, Integer, String, Text, Numeric, ForeignKey, Boolean
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -40,6 +41,12 @@ class Account(Base):
     wage = Column(Integer, nullable=True)  # Hourly wage in cents for employees
     free_delivery_credits = Column(Integer, nullable=False, default=0)  # Free delivery credits for VIP
     completed_orders_count = Column(Integer, nullable=False, default=0)  # Track orders for VIP free delivery
+    
+    # Chef/employee tracking
+    times_demoted = Column(Integer, nullable=False, default=0)
+    is_fired = Column(Boolean, nullable=False, default=False)
+    is_blacklisted = Column(Boolean, nullable=False, default=False)
+    previous_type = Column(String(50), nullable=True)  # For VIP->customer demotion tracking
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="accounts")
@@ -200,18 +207,26 @@ class DeliveryRating(Base):
 
 
 class Complaint(Base):
-    """Complaints table"""
+    """Complaints/compliments table"""
     __tablename__ = "complaint"
 
     id = Column(Integer, primary_key=True)
-    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
-    type = Column(String(50), nullable=False)
+    accountID = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=True)  # Nullable for general complaints
+    type = Column(String(50), nullable=False)  # 'complaint' or 'compliment'
     description = Column(Text, nullable=False)
     filer = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(50), nullable=False, default='pending')  # pending, resolved
+    resolution = Column(String(50), nullable=True)  # dismissed, warning_issued
+    resolved_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    resolved_at = Column(Text, nullable=True)  # ISO timestamp
+    created_at = Column(Text, nullable=True)  # ISO timestamp
 
     # Relationships
     account = relationship("Account", back_populates="complaints_about", foreign_keys=[accountID])
     filer_account = relationship("Account", back_populates="complaints_filed", foreign_keys=[filer])
+    order = relationship("Order", backref="complaints")
+    resolver = relationship("Account", foreign_keys=[resolved_by])
 
 
 class ClosureRequest(Base):
@@ -255,3 +270,56 @@ class Transaction(Base):
 
     # Relationships
     account = relationship("Account", back_populates="transactions")
+
+
+class AuditLog(Base):
+    """Immutable audit log for reputation-related actions"""
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True)
+    action_type = Column(String(100), nullable=False)  # complaint_filed, complaint_resolved, warning_issued, etc.
+    actor_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    target_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    complaint_id = Column(Integer, ForeignKey("complaint.id", ondelete="SET NULL"), nullable=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    details = Column(JSONB, nullable=True)  # Additional context
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    # Relationships
+    actor = relationship("Account", foreign_keys=[actor_id])
+    target = relationship("Account", foreign_keys=[target_id])
+    complaint = relationship("Complaint")
+    order = relationship("Order")
+
+
+class Blacklist(Base):
+    """Permanently banned users"""
+    __tablename__ = "blacklist"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), nullable=False, unique=True)
+    reason = Column(Text, nullable=True)
+    original_account_id = Column(Integer, nullable=True)
+    blacklisted_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    # Relationships
+    blacklisted_by_account = relationship("Account", foreign_keys=[blacklisted_by])
+
+
+class ManagerNotification(Base):
+    """System alerts for managers"""
+    __tablename__ = "manager_notifications"
+
+    id = Column(Integer, primary_key=True)
+    notification_type = Column(String(100), nullable=False)  # chef_performance, delivery_issue, etc.
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    related_account_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    related_order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    is_read = Column(Boolean, nullable=False, default=False)
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    # Relationships
+    related_account = relationship("Account", foreign_keys=[related_account_id])
+    related_order = relationship("Order")

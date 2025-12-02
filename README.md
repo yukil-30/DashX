@@ -872,6 +872,210 @@ curl "http://localhost:8000/account/transactions?transaction_type=deposit" \
 - `withdrawal`: User withdrew funds
 - `order_payment`: Payment for an order
 
+### Reputation & HR API
+
+The reputation system handles complaints, compliments, warnings, and employee management.
+
+#### File a Complaint or Compliment
+```bash
+curl -X POST http://localhost:8000/complaints \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "about_user_id": 5,
+    "order_id": 123,
+    "type": "complaint",
+    "text": "Food was cold when delivered"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
+  "accountID": 5,
+  "type": "complaint",
+  "description": "Food was cold when delivered",
+  "filer": 3,
+  "filer_email": "customer@example.com",
+  "about_email": "delivery@example.com",
+  "order_id": 123,
+  "status": "pending",
+  "resolution": null,
+  "created_at": "2025-12-01T15:30:00Z"
+}
+```
+
+**Parameters:**
+- `about_user_id`: User being complained about (null for general complaints)
+- `order_id`: Related order (optional)
+- `type`: "complaint" or "compliment"
+- `text`: Description (1-2000 characters)
+
+#### List Complaints (Manager Only)
+```bash
+curl "http://localhost:8000/complaints?status_filter=pending" \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "complaints": [...],
+  "total": 15,
+  "unresolved_count": 8
+}
+```
+
+#### Resolve a Complaint (Manager Only)
+```bash
+curl -X PATCH http://localhost:8000/complaints/1/resolve \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{
+    "resolution": "warning_issued",
+    "notes": "Verified late delivery, warning issued to delivery person"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Complaint resolved as warning_issued",
+  "complaint_id": 1,
+  "resolution": "warning_issued",
+  "warning_applied_to": 5,
+  "warning_count": 2,
+  "account_status_changed": null,
+  "audit_log_id": 42
+}
+```
+
+**Resolution Types:**
+- `warning_issued`: Valid complaint → target user receives warning
+- `dismissed`: Complaint without merit → **complainant** receives warning
+
+#### Business Rules
+
+| User Type | Warning Threshold | Consequence |
+|-----------|-------------------|-------------|
+| Customer | 3 warnings | Deregistered and blacklisted |
+| VIP | 2 warnings | Demoted to regular customer, warnings cleared |
+| Chef | 3 complaints OR rating <2.0 | Demoted (10% wage reduction) |
+| Chef | Demoted twice | Fired |
+
+**Compliment Cancellation:**
+- Compliments can cancel pending complaints one-for-one
+- Both are marked as resolved when canceled
+
+#### Login Warning Display
+
+When logging in, users with warnings see a message:
+```json
+{
+  "access_token": "...",
+  "warning_info": {
+    "warnings_count": 2,
+    "warning_message": "You have 2 warning(s). Reaching 3 warnings will result in account suspension.",
+    "is_near_threshold": true
+  }
+}
+```
+
+**Blocked Logins:**
+- Blacklisted users: "This account has been permanently suspended"
+- Fired employees: "This employee account has been terminated"
+
+#### View Audit Logs (Manager Only)
+```bash
+curl "http://localhost:8000/complaints/audit/logs?limit=20" \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "entries": [
+    {
+      "id": 42,
+      "action_type": "complaint_resolved",
+      "actor_id": 1,
+      "target_id": 5,
+      "complaint_id": 1,
+      "details": {
+        "resolution": "warning_issued",
+        "warning_count": 2
+      },
+      "created_at": "2025-12-01T15:45:00Z"
+    }
+  ],
+  "total": 42
+}
+```
+
+**Action Types:**
+- `complaint_filed`, `compliment_filed`
+- `complaint_resolved`
+- `warning_issued`, `customer_blacklisted`
+- `vip_demoted`, `chef_demoted`, `chef_fired`
+- `complaint_canceled_by_compliment`
+
+#### Manager Notifications
+```bash
+# List notifications
+curl "http://localhost:8000/complaints/notifications?unread_only=true" \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+
+# Mark as read
+curl -X PATCH http://localhost:8000/complaints/notifications/1/read \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+
+# Mark all as read
+curl -X POST http://localhost:8000/complaints/notifications/read-all \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+#### Trigger Chef/Delivery Evaluation (Manager Only)
+```bash
+curl -X POST http://localhost:8000/admin/evaluate-performance \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Performance evaluation completed",
+  "results": {
+    "chef_evaluations": [
+      {
+        "chef_id": 2,
+        "email": "chef1@example.com",
+        "complaint_count": 1,
+        "avg_rating": 4.2,
+        "times_demoted": 0,
+        "status": "ok"
+      }
+    ],
+    "delivery_evaluations": [...],
+    "timestamp": "2025-12-01T16:00:00Z"
+  }
+}
+```
+
+**Automatic Evaluation:**
+- Background task runs every hour
+- Creates notifications for employees nearing thresholds
+- Status levels: `ok`, `warning` (near threshold), `critical` (at threshold)
+
+#### Manager Complaints UI
+
+Access at `/manager/complaints`:
+- View all pending complaints
+- Filter by status and type
+- Click to see full details
+- Resolve with dismiss (warn complainant) or issue warning (warn target)
+- See real-time status changes and audit references
+
 ### AI Features (Coming Soon)
 - `POST /api/ai/recommend` - Get menu recommendations
 - `POST /api/ai/chat` - Natural language interaction
@@ -1043,6 +1247,15 @@ ORDER BY o.order_datetime DESC;
 - [x] Delivery bidding system
 - [x] VIP discounts & free delivery
 - [x] Transaction audit logging
+- [x] Reputation & HR system
+  - [x] Complaint/compliment filing
+  - [x] Manager resolution UI
+  - [x] Warning thresholds (customer blacklist, VIP demotion)
+  - [x] Chef performance tracking (demotion/firing)
+  - [x] Compliment cancellation
+  - [x] Immutable audit log
+  - [x] Login warning display
+  - [x] Background performance evaluation
 - [ ] Menu management API
 - [ ] AI recommendation integration
 - [ ] Replace LLM stub with Ollama

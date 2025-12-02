@@ -199,6 +199,9 @@
 
 .manager-links {
   margin-bottom: 1rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .nav-link {
@@ -214,6 +217,48 @@
 
 .nav-link:hover {
   background: #388e3c;
+}
+
+/* Warning Banner */
+.warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff3e0;
+  border: 1px solid #ff9800;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: #e65100;
+}
+
+.warning-banner.critical {
+  background: #ffebee;
+  border-color: #f44336;
+  color: #c62828;
+}
+
+.warning-icon {
+  font-size: 1.5rem;
+}
+
+.warning-text {
+  flex: 1;
+  font-weight: 500;
+}
+
+.warning-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.warning-dismiss:hover {
+  opacity: 1;
 }
 
 .logout-btn {

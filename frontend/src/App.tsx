@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-ro
 import './App.css'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
+import { ManagerComplaints } from './pages/manager/ManagerComplaints'
 
 interface HealthStatus {
   status: string
@@ -16,6 +17,12 @@ interface LoginFormData {
   password: string
 }
 
+interface WarningInfo {
+  warnings_count: number
+  warning_message: string | null
+  is_near_threshold: boolean
+}
+
 function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -25,6 +32,7 @@ function App() {
   const [loginForm, setLoginForm] = useState<LoginFormData>({ email: '', password: '' })
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState(false)
+  const [warningInfo, setWarningInfo] = useState<WarningInfo | null>(null)
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -72,6 +80,11 @@ function App() {
       setToken(data.access_token)
       localStorage.setItem('token', data.access_token)
 
+      // Store warning info if present
+      if (data.warning_info) {
+        setWarningInfo(data.warning_info)
+      }
+
       // Fetch user profile to get type
       const profileRes = await fetch(`${apiUrl}/account/profile`, {
         headers: { Authorization: `Bearer ${data.access_token}` },
@@ -91,6 +104,7 @@ function App() {
   const handleLogout = () => {
     setToken(null)
     setUserType(null)
+    setWarningInfo(null)
     localStorage.removeItem('token')
     localStorage.removeItem('userType')
   }
@@ -163,9 +177,19 @@ function App() {
         <section className="user-section">
           <h2>Welcome!</h2>
           <p>You are logged in as: <strong>{userType}</strong></p>
+          
+          {warningInfo && warningInfo.warnings_count > 0 && (
+            <div className={`warning-banner ${warningInfo.is_near_threshold ? 'critical' : ''}`}>
+              <span className="warning-icon">⚠️</span>
+              <span className="warning-text">{warningInfo.warning_message}</span>
+              <button onClick={() => setWarningInfo(null)} className="warning-dismiss">✕</button>
+            </div>
+          )}
+          
           {userType === 'manager' && (
             <div className="manager-links">
               <Link to="/manager/orders" className="nav-link">📋 Manage Orders & Bids</Link>
+              <Link to="/manager/complaints" className="nav-link">⚠️ Complaints & Reputation</Link>
             </div>
           )}
           <button onClick={handleLogout} className="logout-btn">Logout</button>
@@ -212,6 +236,16 @@ function App() {
               element={
                 token && userType === 'manager' ? (
                   <ManagerOrderDetail token={token} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route
+              path="/manager/complaints"
+              element={
+                token && userType === 'manager' ? (
+                  <ManagerComplaints token={token} />
                 ) : (
                   <Navigate to="/" replace />
                 )
