@@ -14,10 +14,27 @@ Final Project for Software Engineering (E-Restaurant App)
 
 DashX is a full-stack AI-enabled restaurant management system that runs entirely locally. It features:
 
-- **AI-Powered Menu Recommendations** - Get personalized dish suggestions based on preferences
-- **Natural Language Ordering** - Order using conversational AI
-- **Real-time Kitchen Dashboard** - Track orders and kitchen status
-- **Smart Inventory Management** - AI-assisted stock predictions
+### Frontend Features (React + Vite + TypeScript + Tailwind CSS)
+- ✅ **Authentication System**: Login/Register with JWT token management
+- ✅ **Personalized Home Page**: Dish recommendations based on order history
+- ✅ **Menu Browser**: Search, filter, sort, and paginated dish browsing
+- ✅ **Dish Details**: Full dish information with image carousel and ratings
+- ✅ **Shopping Cart**: Persistent cart with localStorage, quantity controls
+- ✅ **Order Management**: Create orders with automatic balance deduction
+- ✅ **AI Chat Support**: Knowledge base + LLM fallback with rating system
+- ✅ **Role-Based Dashboards**: Manager (orders, bids), Chef (dishes), Delivery (assignments)
+- ✅ **Warnings Banner**: Real-time account warnings display
+- ✅ **Responsive Design**: Mobile-first approach with Tailwind CSS
+
+### Backend Features (FastAPI + PostgreSQL)
+- ✅ **RESTful API**: Complete CRUD operations for dishes, orders, users
+- ✅ **JWT Authentication**: Role-based access control (Manager, Chef, Delivery, Customer, VIP)
+- ✅ **Delivery Bidding System**: Competitive bidding with manager assignment
+- ✅ **Chat System**: Full-text search knowledge base + LLM fallback
+- ✅ **Reputation System**: Complaints, warnings, demotion, and firing logic
+- ✅ **VIP Benefits**: 5% discounts and free delivery credits
+- ✅ **Transaction Audit**: Immutable financial transaction logging
+- ✅ **Comprehensive Tests**: Unit and integration test coverage
 
 ## 🏗️ Tech Stack
 
@@ -106,6 +123,16 @@ docker-compose up --build
 | Backend API | http://localhost:8000 |
 | API Documentation | http://localhost:8000/docs |
 | LLM Stub | http://localhost:8001 |
+
+### Test Accounts
+
+| Email | Password | Role | Balance |
+|-------|----------|------|---------|
+| `manager@test.com` | `password123` | Manager | $5,000 |
+| `chef@test.com` | `password123` | Chef | - |
+| `delivery@test.com` | `password123` | Delivery | - |
+| `customer@test.com` | `password123` | Customer | $100 |
+| `vip@test.com` | `password123` | VIP | $1,000 |
 
 ## 🧪 Running Tests
 

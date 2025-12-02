@@ -1,46 +1,30 @@
-import React from 'react';
+
 import DishCard from './DishCard';
-import type { Dish } from '../types/dish';
-import './DishGrid.css';
+import { DishCardSkeleton } from './LoadingSkeleton';
+import { Dish } from '../types/api';
 
 interface DishGridProps {
   dishes: Dish[];
   title?: string;
   emptyMessage?: string;
-  onDishClick?: (dish: Dish) => void;
   onAddToCart?: (dish: Dish) => void;
-  showAddButton?: boolean;
   loading?: boolean;
 }
 
-/**
- * DishGrid Component
- * 
- * Displays a responsive grid of DishCards with optional title
- */
-const DishGrid: React.FC<DishGridProps> = ({
+export default function DishGrid({
   dishes,
   title,
-  emptyMessage = 'No dishes available',
-  onDishClick,
+  emptyMessage = 'No dishes found',
   onAddToCart,
-  showAddButton = true,
   loading = false,
-}) => {
+}: DishGridProps) {
   if (loading) {
     return (
-      <div className="dish-grid-container">
-        {title && <h2 className="dish-grid-title">{title}</h2>}
-        <div className="dish-grid loading">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="dish-card-skeleton">
-              <div className="skeleton-image"></div>
-              <div className="skeleton-content">
-                <div className="skeleton-line title"></div>
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line short"></div>
-              </div>
-            </div>
+      <div>
+        {title && <h2 className="text-2xl font-bold text-gray-900 mb-6">{title}</h2>}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <DishCardSkeleton key={i} />
           ))}
         </div>
       </div>
@@ -49,31 +33,24 @@ const DishGrid: React.FC<DishGridProps> = ({
 
   if (dishes.length === 0) {
     return (
-      <div className="dish-grid-container">
-        {title && <h2 className="dish-grid-title">{title}</h2>}
-        <div className="dish-grid-empty">
-          <p>{emptyMessage}</p>
+      <div>
+        {title && <h2 className="text-2xl font-bold text-gray-900 mb-6">{title}</h2>}
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="text-6xl mb-4">🍽️</div>
+          <p className="text-gray-600">{emptyMessage}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="dish-grid-container">
-      {title && <h2 className="dish-grid-title">{title}</h2>}
-      <div className="dish-grid">
+    <div>
+      {title && <h2 className="text-2xl font-bold text-gray-900 mb-6">{title}</h2>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {dishes.map((dish) => (
-          <DishCard
-            key={dish.id}
-            dish={dish}
-            onClick={onDishClick}
-            onAddToCart={onAddToCart}
-            showAddButton={showAddButton}
-          />
+          <DishCard key={dish.id} dish={dish} onAddToCart={onAddToCart} />
         ))}
       </div>
     </div>
   );
-};
-
-export default DishGrid;
+}

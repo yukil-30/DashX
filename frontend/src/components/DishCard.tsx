@@ -1,148 +1,65 @@
-import React from 'react';
-import type { Dish } from '../types/dish';
-import './DishCard.css';
+import { Link } from 'react-router-dom';
+import { Dish } from '../types/api';
+import RatingStars from './RatingStars';
 
 interface DishCardProps {
   dish: Dish;
   onAddToCart?: (dish: Dish) => void;
-  onClick?: (dish: Dish) => void;
-  showAddButton?: boolean;
 }
 
-/**
- * Star rating display component
- */
-const StarRating: React.FC<{ rating: number; reviewCount?: number }> = ({ rating, reviewCount }) => {
-  const fullStars = Math.floor(rating);
-  const hasHalfStar = rating % 1 >= 0.5;
-  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
-
+export default function DishCard({ dish, onAddToCart }: DishCardProps) {
   return (
-    <div className="star-rating" title={`${rating.toFixed(1)} out of 5 stars`}>
-      <span className="stars">
-        {'★'.repeat(fullStars)}
-        {hasHalfStar && '½'}
-        {'☆'.repeat(emptyStars)}
-      </span>
-      {reviewCount !== undefined && (
-        <span className="review-count">({reviewCount})</span>
-      )}
-    </div>
-  );
-};
-
-/**
- * DishCard Component
- * 
- * Displays a dish with:
- * - Image (with fallback)
- * - Name and description
- * - Price formatted as currency
- * - Star rating with review count
- * - Availability badge
- * - Special badge for featured items
- */
-const DishCard: React.FC<DishCardProps> = ({ 
-  dish, 
-  onAddToCart, 
-  onClick,
-  showAddButton = true 
-}) => {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  
-  // Get image URL - use first image from images array, or picture, or fallback
-  const imageUrl = dish.images?.[0]?.image_url || dish.picture;
-  const fullImageUrl = imageUrl 
-    ? imageUrl.startsWith('http') 
-      ? imageUrl 
-      : `${apiUrl}${imageUrl}`
-    : '/placeholder-dish.svg';
-
-  const handleClick = () => {
-    if (onClick) {
-      onClick(dish);
-    }
-  };
-
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering card click
-    if (onAddToCart) {
-      onAddToCart(dish);
-    }
-  };
-
-  return (
-    <div 
-      className={`dish-card ${!dish.is_available ? 'unavailable' : ''} ${dish.is_special ? 'special' : ''}`}
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
-    >
-      {/* Image Section */}
-      <div className="dish-image-container">
-        <img 
-          src={fullImageUrl}
-          alt={dish.name}
-          className="dish-image"
-          loading="lazy"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = '/placeholder-dish.svg';
-          }}
-        />
-        {dish.is_special && (
-          <span className="badge special-badge">⭐ Special</span>
-        )}
-        {!dish.is_available && (
-          <div className="unavailable-overlay">
-            <span>Currently Unavailable</span>
+    <div className="card group" data-testid="dish-card">
+      {/* Image */}
+      <div className="relative h-48 bg-gray-200 overflow-hidden">
+        {dish.picture ? (
+          <img
+            src={dish.picture}
+            alt={dish.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full bg-gradient-to-br from-gray-200 to-gray-300">
+            <span className="text-6xl">🍽️</span>
           </div>
         )}
       </div>
 
-      {/* Content Section */}
-      <div className="dish-content">
-        <div className="dish-header">
-          <h3 className="dish-name">{dish.name}</h3>
-          {dish.category && (
-            <span className="dish-category">{dish.category}</span>
-          )}
-        </div>
+      {/* Content */}
+      <div className="p-4">
+        <Link to={`/dishes/${dish.id}`}>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1 hover:text-primary-600 transition-colors line-clamp-1">
+            {dish.name}
+          </h3>
+        </Link>
 
         {dish.description && (
-          <p className="dish-description">{dish.description}</p>
+          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+            {dish.description}
+          </p>
         )}
 
-        {/* Rating */}
-        {dish.review_count > 0 && (
-          <StarRating rating={dish.average_rating} reviewCount={dish.review_count} />
-        )}
-
-        {/* Price and Action */}
-        <div className="dish-footer">
-          <span className="dish-price">{dish.price_formatted}</span>
-          
-          {showAddButton && dish.is_available && onAddToCart && (
-            <button 
-              className="add-to-cart-btn"
-              onClick={handleAddToCart}
-              aria-label={`Add ${dish.name} to cart`}
-            >
-              Add to Cart
-            </button>
-          )}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-2xl font-bold text-primary-600">
+            {dish.cost_formatted}
+          </span>
+          <div className="flex flex-col items-end">
+            <RatingStars rating={dish.average_rating} size="sm" />
+            <span className="text-xs text-gray-500 mt-1">
+              {dish.reviews} {dish.reviews === 1 ? 'review' : 'reviews'}
+            </span>
+          </div>
         </div>
 
-        {/* Popularity indicator */}
-        {dish.order_count > 10 && (
-          <div className="popularity-indicator">
-            🔥 Popular - {dish.order_count} orders
-          </div>
+        {onAddToCart && (
+          <button
+            onClick={() => onAddToCart(dish)}
+            className="btn-primary w-full"
+          >
+            Add to Cart
+          </button>
         )}
       </div>
     </div>
   );
-};
-
-export default DishCard;
+}

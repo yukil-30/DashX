@@ -3,29 +3,29 @@ import { render, screen } from '@testing-library/react'
 import App from '../App'
 
 describe('App', () => {
-  it('renders the app title', () => {
+  it('renders the app logo emoji', () => {
     render(<App />)
-    expect(screen.getByText(/Local AI-enabled Restaurant/i)).toBeInTheDocument()
+    expect(screen.getByText(/🍽️/)).toBeInTheDocument()
   })
 
-  it('renders the subtitle', () => {
+  it('renders navigation menu link', () => {
     render(<App />)
-    expect(screen.getByText(/Your intelligent dining companion/i)).toBeInTheDocument()
+    expect(screen.getByText(/Menu/i)).toBeInTheDocument()
   })
 
-  it('shows loading state initially', () => {
+  it('renders support link', () => {
     render(<App />)
-    expect(screen.getByText(/Loading/i)).toBeInTheDocument()
+    expect(screen.getByText(/Support/i)).toBeInTheDocument()
   })
 
-  it('renders features section', () => {
+  it('renders login button when not authenticated', () => {
     render(<App />)
-    expect(screen.getByText(/Features/i)).toBeInTheDocument()
+    expect(screen.getByText(/Login/i)).toBeInTheDocument()
   })
 
-  it('lists AI-powered menu recommendations feature', () => {
+  it('renders sign up button when not authenticated', () => {
     render(<App />)
-    expect(screen.getByText(/AI-powered menu recommendations/i)).toBeInTheDocument()
+    expect(screen.getByText(/Sign Up/i)).toBeInTheDocument()
   })
 
   it('renders footer with copyright', () => {
