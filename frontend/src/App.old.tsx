@@ -98,7 +98,7 @@ function App() {
       }
 
       // Fetch user profile to get type
-      const profileRes = await fetch(`${apiUrl}/account/profile`, {
+      const profileRes = await fetch(`${apiUrl}/auth/me`, {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
       if (profileRes.ok) {

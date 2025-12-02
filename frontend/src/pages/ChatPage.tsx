@@ -6,8 +6,8 @@ import { RatingStars } from '../components';
 interface Message {
   id: number;
   question: string;
-  answer: string;
-  source: 'kb' | 'llm';
+  answer: string | null;
+  source: 'kb' | 'llm' | 'pending';
   rating: number | null;
   timestamp: Date;
 }
@@ -27,7 +27,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,22 +39,41 @@ export default function ChatPage() {
     setLoading(true);
     setError('');
 
+    // Add pending message immediately
+    const tempId = Date.now();
+    const pendingMessage: Message = {
+      id: tempId,
+      question,
+      answer: null,
+      source: 'pending',
+      rating: null,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, pendingMessage]);
+
     try {
       const request: ChatQueryRequest = { question };
       const response = await apiClient.post<ChatQueryResponse>('/chat/query', request);
       
-      const newMessage: Message = {
-        id: response.data.chat_id,
-        question: response.data.question,
-        answer: response.data.answer,
-        source: response.data.source,
-        rating: null,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, newMessage]);
+      // Update the pending message with the real response
+      setMessages((prev) => 
+        prev.map(msg => 
+          msg.id === tempId 
+            ? {
+                id: response.data.chat_id,
+                question: response.data.question,
+                answer: response.data.answer,
+                source: response.data.source,
+                rating: null,
+                timestamp: new Date(),
+              }
+            : msg
+        )
+      );
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to send message');
+      // Remove the pending message on error
+      setMessages((prev) => prev.filter(msg => msg.id !== tempId));
     } finally {
       setLoading(false);
     }
@@ -109,6 +128,7 @@ export default function ChatPage() {
               </div>
 
               {/* Bot Answer */}
+              {message.answer && (
               <div className="flex justify-start">
                 <div className="bg-white rounded-lg px-4 py-3 max-w-[80%] shadow-md">
                   <div className="flex items-start gap-2 mb-2">
@@ -149,6 +169,7 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
+              )}
             </div>
           ))
         )}

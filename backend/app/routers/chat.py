@@ -225,7 +225,10 @@ async def chat_query(
     logger.info(f"No KB match, calling LLM adapter: {adapter.name}")
     
     # Provide context to LLM
-    context = "You are a helpful restaurant assistant. Answer questions about our menu, orders, and services."
+    context = (
+        "You are a helpful assistant for DashX restaurant. "
+        "Answer the user's question about the menu or order politely and concisely."
+    )
     
     llm_response: LLMResponse = await adapter.generate(question, context)
     

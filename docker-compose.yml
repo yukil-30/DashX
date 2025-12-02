@@ -97,6 +97,7 @@ services:
       N_THREADS: ${LOCAL_LLM_THREADS:-4}
       N_GPU_LAYERS: ${LOCAL_LLM_GPU_LAYERS:-0}
       STUB_MODE: ${LOCAL_LLM_STUB_MODE:-false}
+      CHAT_FORMAT: chatml
     ports:
       - "8080:8080"
     volumes:

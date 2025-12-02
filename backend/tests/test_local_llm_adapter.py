@@ -20,32 +20,32 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 
 from llm_adapter import (
-    LocalLLMServiceAdapter,
+    DockerLocalLLMAdapter,
     LLMResponse,
     LLMCache,
     get_llm_adapter
 )
 
 
-class TestLocalLLMServiceAdapterUnit:
-    """Unit tests for LocalLLMServiceAdapter (mocked, no service required)"""
+class TestDockerLocalLLMAdapterUnit:
+    """Unit tests for DockerLocalLLMAdapter (mocked, no service required)"""
     
     @pytest.fixture
     def adapter(self):
         """Create adapter instance"""
-        return LocalLLMServiceAdapter(
+        return DockerLocalLLMAdapter(
             base_url="http://test-llm:8080",
             cache=LLMCache(ttl_seconds=60)
         )
     
     def test_adapter_name(self, adapter):
         """Test adapter name property"""
-        assert adapter.name == "local-llm"
+        assert adapter.name == "docker-local-llm"
     
     def test_adapter_default_url(self):
         """Test default URL is used when not specified"""
         with patch.dict(os.environ, {"LOCAL_LLM_URL": "http://custom:9000"}):
-            adapter = LocalLLMServiceAdapter()
+            adapter = DockerLocalLLMAdapter()
             assert adapter.base_url == "http://custom:9000"
     
     @pytest.mark.asyncio
@@ -69,7 +69,7 @@ class TestLocalLLMServiceAdapterUnit:
             
             assert result.answer == "Test response"
             assert result.model == "local-llm"
-            assert result.confidence == 0.7
+            assert result.confidence == 0.6
             assert result.error is None
     
     @pytest.mark.asyncio
@@ -96,7 +96,8 @@ class TestLocalLLMServiceAdapterUnit:
             # Verify the prompt includes context
             call_args = mock_instance.post.call_args
             json_data = call_args.kwargs.get('json', call_args[1].get('json', {}))
-            assert "Context:" in json_data.get("prompt", "")
+            assert "<|im_start|>system" in json_data.get("prompt", "")
+            assert "Restaurant menu context" in json_data.get("prompt", "")
             assert result.answer == "Contextual response"
     
     @pytest.mark.asyncio
@@ -117,11 +118,8 @@ class TestLocalLLMServiceAdapterUnit:
         assert result.cached is True
     
     @pytest.mark.asyncio
-    async def test_generate_connection_error_with_retry(self, adapter):
-        """Test retry logic on connection errors"""
-        adapter.max_retries = 2
-        adapter.retry_delay = 0.01  # Fast retries for testing
-        
+    async def test_generate_connection_error(self, adapter):
+        """Test error handling on connection errors"""
         with patch('httpx.AsyncClient') as mock_client:
             import httpx
             mock_client.return_value.__aenter__.return_value.post = AsyncMock(
@@ -132,24 +130,7 @@ class TestLocalLLMServiceAdapterUnit:
             
             assert result.answer == ""
             assert result.error is not None
-            assert "retries" in result.error.lower()
-    
-    @pytest.mark.asyncio
-    async def test_generate_timeout_with_retry(self, adapter):
-        """Test retry logic on timeout"""
-        adapter.max_retries = 2
-        adapter.retry_delay = 0.01
-        
-        with patch('httpx.AsyncClient') as mock_client:
-            import httpx
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                side_effect=httpx.TimeoutException("Timeout")
-            )
-            
-            result = await adapter.generate("Test question")
-            
-            assert result.answer == ""
-            assert result.error is not None
+            assert "Cannot connect" in result.error
     
     def test_health_check_success(self, adapter):
         """Test successful health check"""
@@ -167,7 +148,7 @@ class TestLocalLLMServiceAdapterUnit:
             result = adapter.health_check()
             
             assert result["status"] == "ok"
-            assert result["adapter"] == "local-llm"
+            assert result["adapter"] == "docker-local-llm"
             assert result["model_loaded"] is True
     
     def test_health_check_failure(self, adapter):
@@ -195,19 +176,19 @@ class TestGetLLMAdapter:
     def test_get_local_adapter_explicit(self):
         """Test explicit local adapter selection"""
         adapter = get_llm_adapter("local")
-        assert adapter.name == "local-llm"
+        assert adapter.name == "docker-local-llm"
     
     def test_get_local_adapter_via_env(self):
         """Test local adapter via LLM_ADAPTER env var"""
         with patch.dict(os.environ, {"LLM_ADAPTER": "local"}):
             adapter = get_llm_adapter()
-            assert adapter.name == "local-llm"
+            assert adapter.name == "docker-local-llm"
     
     def test_get_local_adapter_via_enable_flag(self):
         """Test local adapter via ENABLE_LOCAL_LLM flag"""
         with patch.dict(os.environ, {"ENABLE_LOCAL_LLM": "true"}):
             adapter = get_llm_adapter()
-            assert adapter.name == "local-llm"
+            assert adapter.name == "docker-local-llm"
     
     def test_get_ollama_adapter(self):
         """Test Ollama adapter selection"""
@@ -221,7 +202,7 @@ class TestGetLLMAdapter:
 
 
 @pytest.mark.integration
-class TestLocalLLMServiceAdapterIntegration:
+class TestDockerLocalLLMAdapterIntegration:
     """
     Integration tests that require the local-llm service to be running.
     
@@ -234,7 +215,7 @@ class TestLocalLLMServiceAdapterIntegration:
     @pytest.fixture
     def adapter(self):
         """Create adapter pointing to real service"""
-        return LocalLLMServiceAdapter(
+        return DockerLocalLLMAdapter(
             base_url=os.getenv("LOCAL_LLM_URL", "http://localhost:8080")
         )
     
@@ -263,4 +244,4 @@ class TestLocalLLMServiceAdapterIntegration:
         result = adapter.health_check()
         
         assert result["status"] == "ok"
-        assert result["adapter"] == "local-llm"
+        assert result["adapter"] == "docker-local-llm"

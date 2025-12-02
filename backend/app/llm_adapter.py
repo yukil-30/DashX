@@ -361,6 +361,117 @@ class OllamaAdapter(LocalLLMAdapter):
         }
 
 
+class DockerLocalLLMAdapter(LocalLLMAdapter):
+    """
+    Adapter for the Docker-based Local LLM service (local-llm).
+    Connects to the service running on port 8080 (default).
+    """
+    
+    def __init__(
+        self, 
+        base_url: Optional[str] = None, 
+        cache: Optional[LLMCache] = None
+    ):
+        super().__init__(cache)
+        self.base_url = base_url or os.getenv("LOCAL_LLM_URL", "http://local-llm:8080")
+    
+    @property
+    def name(self) -> str:
+        return "docker-local-llm"
+    
+    async def generate(self, question: str, context: Optional[str] = None) -> LLMResponse:
+        """Generate response using Docker Local LLM service"""
+        # Check cache first
+        cached = self._check_cache(question, context)
+        if cached:
+            logger.debug(f"Cache hit for question: {question[:50]}...")
+            return cached
+        
+        # Construct prompt using ChatML format (Qwen)
+        system_part = f"<|im_start|>system\n{context}<|im_end|>\n" if context else ""
+        prompt = f"{system_part}<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n"
+        
+        logger.info(f"Sending request to Local LLM at {self.base_url}...")
+        start_time = datetime.now()
+        
+        try:
+            # Increase timeout to 120s for slower local CPUs
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/v1/generate",
+                    json={
+                        "prompt": prompt,
+                        "max_tokens": 256,
+                        "temperature": 0.7,
+                        "stop": ["<|im_end|>", "<|im_start|>"]
+                    }
+                )
+                
+                elapsed = (datetime.now() - start_time).total_seconds()
+                logger.info(f"Local LLM responded in {elapsed:.2f}s")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    result = LLMResponse(
+                        answer=data.get("text", ""),
+                        model=data.get("model", "local-llm"),
+                        confidence=0.6,
+                        tokens_used=data.get("tokens_used", 0),
+                        latency_ms=data.get("latency_ms", 0.0)
+                    )
+                    self._cache_response(question, result, context)
+                    return result
+                else:
+                    logger.error(f"Local LLM error: {response.status_code} - {response.text}")
+                    return LLMResponse(
+                        answer="",
+                        model="local-llm",
+                        confidence=0.0,
+                        error=f"Local LLM returned status {response.status_code}"
+                    )
+        except httpx.ConnectError as e:
+            logger.error(f"Cannot connect to Local LLM at {self.base_url}: {e}")
+            return LLMResponse(
+                answer="",
+                model="local-llm",
+                confidence=0.0,
+                error=f"Cannot connect to Local LLM: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Local LLM generate error: {e}")
+            return LLMResponse(
+                answer="",
+                model="local-llm",
+                confidence=0.0,
+                error=str(e)
+            )
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Check Local LLM service health"""
+        try:
+            import httpx
+            with httpx.Client(timeout=2.0) as client:
+                response = client.get(f"{self.base_url}/health")
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        "status": "ok",
+                        "adapter": "docker-local-llm",
+                        "url": self.base_url,
+                        "model_loaded": data.get("model_loaded", False),
+                        "stub_mode": data.get("stub_mode", False)
+                    }
+        except Exception as e:
+            logger.debug(f"Local LLM health check failed: {e}")
+        
+        return {
+            "status": "error",
+            "adapter": "docker-local-llm",
+            "url": self.base_url,
+            "error": "Cannot connect to Local LLM service"
+        }
+
+
 class HuggingFaceAdapter(LocalLLMAdapter):
     """
     Adapter for local HuggingFace Transformers.
@@ -511,9 +622,15 @@ def get_llm_adapter(adapter_type: Optional[str] = None) -> LocalLLMAdapter:
     cache = get_llm_cache()
     adapter_type = adapter_type or os.getenv("LLM_ADAPTER", "stub")
     
+    # Check for ENABLE_LOCAL_LLM override if adapter is stub
+    if adapter_type == "stub" and os.getenv("ENABLE_LOCAL_LLM", "false").lower() == "true":
+        adapter_type = "local"
+    
     if adapter_type == "ollama":
         return OllamaAdapter(cache=cache)
     elif adapter_type == "huggingface":
         return HuggingFaceAdapter(cache=cache)
+    elif adapter_type in ["local", "docker"]:
+        return DockerLocalLLMAdapter(cache=cache)
     else:
         return StubAdapter(cache=cache)

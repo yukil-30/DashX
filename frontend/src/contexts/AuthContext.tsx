@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = async () => {
     try {
-      const response = await apiClient.get<ProfileResponse>('/account/profile');
+      const response = await apiClient.get<ProfileResponse>('/auth/me');
       setUser(response.data.user);
     } catch (error) {
       console.error('Failed to fetch profile:', error);
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     // Fetch user profile
-    const profileResponse = await apiClient.get<ProfileResponse>('/account/profile', {
+    const profileResponse = await apiClient.get<ProfileResponse>('/auth/me', {
       headers: { Authorization: `Bearer ${access_token}` },
     });
     setUser(profileResponse.data.user);
