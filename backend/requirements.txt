@@ -35,3 +35,4 @@ httpx==0.25.2
 
 # Dev tools
 python-dotenv==1.0.0
+ruff==0.14.7

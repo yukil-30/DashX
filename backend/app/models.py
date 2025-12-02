@@ -4,7 +4,7 @@ Matches exactly the authoritative database schema.
 """
 
 from sqlalchemy import (
-    Column, Integer, String, Text, Numeric, ForeignKey, Boolean
+    Column, Integer, String, Text, Numeric, ForeignKey, Boolean, JSON, CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -75,6 +75,10 @@ class Dish(Base):
     reviews = Column(Integer, nullable=False, default=0)
     chefID = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
 
+    __table_args__ = (
+        CheckConstraint('cost >= 0', name='check_dish_cost_positive'),
+    )
+
     # Relationships
     restaurant = relationship("Restaurant", back_populates="dishes")
     chef = relationship("Account", back_populates="dishes_created", foreign_keys=[chefID])
@@ -113,6 +117,10 @@ class OrderedDish(Base):
     DishID = Column(Integer, ForeignKey("dishes.id", ondelete="RESTRICT"), primary_key=True)
     orderID = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), primary_key=True)
     quantity = Column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint('quantity > 0', name='check_ordered_dish_quantity_positive'),
+    )
 
     # Relationships
     order = relationship("Order", back_populates="ordered_dishes")
@@ -282,7 +290,7 @@ class AuditLog(Base):
     target_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
     complaint_id = Column(Integer, ForeignKey("complaint.id", ondelete="SET NULL"), nullable=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
-    details = Column(JSONB, nullable=True)  # Additional context
+    details = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)  # Additional context
     created_at = Column(Text, nullable=False)  # ISO timestamp
 
     # Relationships
@@ -380,8 +388,8 @@ class VoiceReport(Base):
     mime_type = Column(String(100), nullable=False, default='audio/mpeg')
     transcription = Column(Text, nullable=True)  # Transcribed text
     sentiment = Column(String(50), nullable=True)  # complaint, compliment, neutral
-    subjects = Column(JSONB, nullable=True)  # Extracted subjects: ["chef", "driver", "staff"]
-    auto_labels = Column(JSONB, nullable=True)  # Auto-generated labels: ["Complaint Chef", "Food Quality"]
+    subjects = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)  # Extracted subjects: ["chef", "driver", "staff"]
+    auto_labels = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)  # Auto-generated labels: ["Complaint Chef", "Food Quality"]
     confidence_score = Column(Numeric(3, 2), nullable=True)  # NLP confidence 0.00-1.00
     status = Column(String(50), nullable=False, default='pending')  # pending, transcribed, analyzed, resolved
     is_processed = Column(Boolean, nullable=False, default=False)  # Has transcription & NLP completed

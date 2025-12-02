@@ -5,148 +5,10 @@ Tests for Voice Reports functionality
 import os
 import pytest
 import tempfile
-from pathlib import Path
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from io import BytesIO
 
-from app.main import app
-from app.database import Base, get_db
-from app.models import Account, VoiceReport
+from app.models import VoiceReport
 from app.auth import create_access_token
-
-
-# Test database setup
-SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test_voice_reports.db"
-engine = create_engine(SQLALCHEMY_TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    """Override database dependency for tests"""
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
-
-@pytest.fixture(scope="module")
-def setup_database():
-    """Setup test database"""
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
-    # Clean up test db file
-    if os.path.exists("test_voice_reports.db"):
-        os.remove("test_voice_reports.db")
-
-
-@pytest.fixture
-def client(setup_database):
-    """Test client fixture"""
-    return TestClient(app)
-
-
-@pytest.fixture
-def db_session(setup_database):
-    """Database session fixture"""
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@pytest.fixture
-def customer_user(db_session):
-    """Create a test customer user"""
-    user = Account(
-        ID=100,
-        email="customer@test.com",
-        password="hashed_password",
-        type="customer",
-        balance=10000,
-        warnings=0
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
-
-
-@pytest.fixture
-def vip_user(db_session):
-    """Create a test VIP user"""
-    user = Account(
-        ID=101,
-        email="vip@test.com",
-        password="hashed_password",
-        type="vip",
-        balance=50000,
-        warnings=0
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
-
-
-@pytest.fixture
-def delivery_user(db_session):
-    """Create a test delivery user"""
-    user = Account(
-        ID=102,
-        email="delivery@test.com",
-        password="hashed_password",
-        type="delivery",
-        balance=5000,
-        warnings=0
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
-
-
-@pytest.fixture
-def manager_user(db_session):
-    """Create a test manager user"""
-    user = Account(
-        ID=103,
-        email="manager@test.com",
-        password="hashed_password",
-        type="manager",
-        balance=0,
-        warnings=0,
-        restaurantID=1
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
-
-
-@pytest.fixture
-def chef_user(db_session):
-    """Create a test chef user"""
-    user = Account(
-        ID=104,
-        email="chef@test.com",
-        password="hashed_password",
-        type="chef",
-        balance=0,
-        warnings=0,
-        restaurantID=1
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
 
 
 @pytest.fixture
@@ -193,8 +55,22 @@ class TestVoiceReportSubmission:
         assert data["status"] == "pending" or data["status"] == "analyzed"
         assert data["file_size_bytes"] > 0
     
-    def test_submit_voice_report_with_order_id(self, client, customer_token):
+    def test_submit_voice_report_with_order_id(self, client, customer_token, db_session, customer_user):
         """Test submitting voice report with related order"""
+        # Create an order first
+        from app.models import Order
+        from datetime import datetime
+        
+        order = Order(
+            id=123,
+            accountID=customer_user.ID,
+            finalCost=1000,
+            status='delivered',
+            dateTime=datetime.now().isoformat()
+        )
+        db_session.add(order)
+        db_session.commit()
+        
         audio_file = create_test_audio_file()
         
         response = client.post(
