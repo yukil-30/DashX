@@ -190,7 +190,7 @@ async def root():
 
 
 # Import and register routers
-from app.routers import auth, account, dishes, home, orders, bids, reputation
+from app.routers import auth, account, dishes, home, orders, bids, reputation, chat
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(dishes.router)
@@ -198,6 +198,7 @@ app.include_router(home.router)
 app.include_router(orders.router)
 app.include_router(bids.router)
 app.include_router(reputation.router)
+app.include_router(chat.router)
 
 
 @app.post("/admin/evaluate-performance", tags=["Admin"])

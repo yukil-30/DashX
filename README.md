@@ -1080,6 +1080,256 @@ Access at `/manager/complaints`:
 - `POST /api/ai/recommend` - Get menu recommendations
 - `POST /api/ai/chat` - Natural language interaction
 
+### Chat & Knowledge Base API
+
+The chat system provides AI-powered Q&A with knowledge base search and LLM fallback.
+
+#### Query the Chat System
+```bash
+curl -X POST http://localhost:8000/chat/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "question": "What are your hours of operation?"
+  }'
+```
+
+**Response (200 OK) - KB Match:**
+```json
+{
+  "chat_id": 1,
+  "question": "What are your hours of operation?",
+  "answer": "We are open Monday through Sunday from 11:00 AM to 10:00 PM. Last orders are taken at 9:30 PM.",
+  "source": "kb",
+  "confidence": 0.85,
+  "kb_entry_id": 1
+}
+```
+
+**Response (200 OK) - LLM Fallback:**
+```json
+{
+  "chat_id": 2,
+  "question": "What's your most exotic dish?",
+  "answer": "I'd be happy to help you with that! Based on our restaurant's offerings, I recommend checking out our daily specials.",
+  "source": "llm",
+  "confidence": 0.5,
+  "kb_entry_id": null
+}
+```
+
+**Flow:**
+1. Search knowledge base using PostgreSQL full-text search
+2. If high-confidence match found (≥0.6), return KB answer
+3. If no match, call configured LLM adapter (stub/Ollama/HuggingFace)
+4. Store chat log and return `chat_id` for rating
+
+#### Rate a Chat Response
+```bash
+curl -X POST http://localhost:8000/chat/1/rate \
+  -H "Content-Type: application/json" \
+  -d '{"rating": 5}'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Rating recorded",
+  "chat_id": 1,
+  "rating": 5,
+  "flagged": false
+}
+```
+
+**Rating = 0 Flags for Review:**
+```bash
+curl -X POST http://localhost:8000/chat/1/rate \
+  -H "Content-Type: application/json" \
+  -d '{"rating": 0}'
+```
+
+**Response:**
+```json
+{
+  "message": "Flagged for manager review",
+  "chat_id": 1,
+  "rating": 0,
+  "flagged": true
+}
+```
+
+#### View Flagged Chats (Manager Only)
+```bash
+curl http://localhost:8000/chat/flagged \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "flagged_chats": [
+    {
+      "id": 1,
+      "user_id": 5,
+      "user_email": "customer@example.com",
+      "question": "What are your hours?",
+      "answer": "We are open 24/7",
+      "source": "kb",
+      "confidence": 0.75,
+      "rating": 0,
+      "kb_entry_id": 3,
+      "created_at": "2025-12-01T10:30:00Z",
+      "reviewed": false
+    }
+  ],
+  "total": 1
+}
+```
+
+#### Review Flagged Chat (Manager Only)
+```bash
+# Dismiss - just mark as reviewed
+curl -X POST http://localhost:8000/chat/1/review \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{"action": "dismiss"}'
+
+# Remove KB entry - deactivate the problematic answer
+curl -X POST http://localhost:8000/chat/1/review \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{"action": "remove_kb"}'
+
+# Disable author - deactivate ALL KB entries by this author
+curl -X POST http://localhost:8000/chat/1/review \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{"action": "disable_author"}'
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Chat 1 reviewed",
+  "chat_id": 1,
+  "action_taken": "remove_kb",
+  "kb_entries_affected": 1
+}
+```
+
+#### Knowledge Base CRUD (Manager Only)
+
+**List KB Entries:**
+```bash
+curl "http://localhost:8000/chat/kb?active_only=true" \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Create KB Entry:**
+```bash
+curl -X POST http://localhost:8000/chat/kb \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{
+    "question": "Do you have parking?",
+    "answer": "Yes, free parking is available behind the building.",
+    "keywords": "parking,park,car,lot",
+    "confidence": 0.9
+  }'
+```
+
+**Update KB Entry:**
+```bash
+curl -X PUT http://localhost:8000/chat/kb/1 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{
+    "answer": "Updated answer text",
+    "confidence": 0.95
+  }'
+```
+
+**Delete KB Entry (Soft Delete):**
+```bash
+curl -X DELETE http://localhost:8000/chat/kb/1 \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+#### LLM Adapter Health & Cache (Manager Only)
+```bash
+# Check adapter status
+curl http://localhost:8000/chat/adapter/health \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+
+# Clear LLM response cache
+curl -X POST http://localhost:8000/chat/adapter/cache/clear \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (Adapter Health):**
+```json
+{
+  "adapter": {
+    "status": "ok",
+    "adapter": "stub",
+    "service": "connected"
+  },
+  "cache": {
+    "entries": 15,
+    "max_entries": 1000,
+    "total_hits": 42,
+    "ttl_seconds": 3600
+  }
+}
+```
+
+### LLM Adapter Configuration
+
+The chat system uses a pluggable LLM adapter. Configure via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_ADAPTER` | Adapter type: `stub`, `ollama`, `huggingface` | `stub` |
+| `LLM_STUB_URL` | URL for stub service | `http://llm-stub:8001` |
+| `OLLAMA_URL` | URL for Ollama API | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Ollama model name | `llama2` |
+| `HF_MODEL` | HuggingFace model name | `gpt2` |
+| `LLM_CACHE_TTL` | Cache TTL in seconds | `3600` |
+| `KB_CONFIDENCE_THRESHOLD` | Min confidence for KB match | `0.6` |
+
+#### Using Ollama
+
+1. Install Ollama: https://ollama.ai
+2. Pull a model: `ollama pull llama2`
+3. Start Ollama: `ollama serve`
+4. Set environment:
+   ```bash
+   export LLM_ADAPTER=ollama
+   export OLLAMA_URL=http://localhost:11434
+   export OLLAMA_MODEL=llama2
+   ```
+
+#### Using HuggingFace (Local)
+
+1. Install transformers: `pip install transformers torch`
+2. Set environment:
+   ```bash
+   export LLM_ADAPTER=huggingface
+   export HF_MODEL=gpt2  # or any text-generation model
+   ```
+
+> **Note:** HuggingFace runs models locally and requires sufficient RAM/GPU.
+
+### Seeding Knowledge Base
+
+Load initial FAQ data:
+```bash
+docker-compose exec postgres psql -U restaurant_user -d restaurant_db \
+  -f /app/sql/seed_knowledge_base.sql
+```
+
+This adds ~15 common Q&A entries covering hours, ordering, delivery, payment, and more.
+
 ## 🔧 Environment Variables
 
 | Variable | Description | Default |
@@ -1256,9 +1506,16 @@ ORDER BY o.order_datetime DESC;
   - [x] Immutable audit log
   - [x] Login warning display
   - [x] Background performance evaluation
+- [x] Chat & Knowledge Base System
+  - [x] Knowledge base with full-text search
+  - [x] Chat query endpoint with KB search + LLM fallback
+  - [x] Rating system (0 = flag for review)
+  - [x] Manager flagged answer review
+  - [x] Pluggable LLM adapters (Stub, Ollama, HuggingFace)
+  - [x] LLM response caching
+  - [x] KB CRUD endpoints
 - [ ] Menu management API
 - [ ] AI recommendation integration
-- [ ] Replace LLM stub with Ollama
 - [ ] Kitchen dashboard UI
 - [ ] Real-time order updates (WebSocket)
 

@@ -323,3 +323,46 @@ class ManagerNotification(Base):
     # Relationships
     related_account = relationship("Account", foreign_keys=[related_account_id])
     related_order = relationship("Order")
+
+
+class KnowledgeBase(Base):
+    """Knowledge base entries for FAQ/chat support"""
+    __tablename__ = "knowledge_base"
+
+    id = Column(Integer, primary_key=True)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+    keywords = Column(Text, nullable=True)  # Comma-separated keywords
+    confidence = Column(Numeric(3, 2), nullable=False, default=0.80)
+    author_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(Text, nullable=True)
+    updated_at = Column(Text, nullable=True)
+
+    # Relationships
+    author = relationship("Account", foreign_keys=[author_id])
+    chat_logs = relationship("ChatLog", back_populates="kb_entry")
+
+
+class ChatLog(Base):
+    """Chat interaction log for audit and rating"""
+    __tablename__ = "chat_log"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+    source = Column(String(10), nullable=False)  # 'kb' or 'llm'
+    kb_entry_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
+    confidence = Column(Numeric(3, 2), nullable=True)
+    rating = Column(Integer, nullable=True)  # 0-5, where 0 = flagged
+    flagged = Column(Boolean, nullable=False, default=False)
+    reviewed = Column(Boolean, nullable=False, default=False)
+    reviewed_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(Text, nullable=True)
+    created_at = Column(Text, nullable=True)
+
+    # Relationships
+    user = relationship("Account", foreign_keys=[user_id])
+    kb_entry = relationship("KnowledgeBase", back_populates="chat_logs")
+    reviewer = relationship("Account", foreign_keys=[reviewed_by])

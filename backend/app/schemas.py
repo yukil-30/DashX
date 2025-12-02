@@ -639,3 +639,109 @@ class TransactionListResponse(BaseModel):
     """List of transactions"""
     transactions: List[TransactionResponse]
     total: int
+
+
+# ============================================================
+# Chat/Knowledge Base Schemas
+# ============================================================
+
+class ChatQueryRequest(BaseModel):
+    """Request for chat query"""
+    user_id: Optional[int] = Field(None, description="User ID (optional, taken from token if authenticated)")
+    question: str = Field(..., min_length=1, max_length=2000, description="The question to ask")
+
+
+class ChatQueryResponse(BaseModel):
+    """Response from chat query"""
+    chat_id: int = Field(..., description="Chat log ID for rating")
+    question: str
+    answer: str
+    source: str = Field(..., description="'kb' for knowledge base, 'llm' for LLM-generated")
+    confidence: float = Field(..., ge=0, le=1, description="Confidence score of the answer")
+    kb_entry_id: Optional[int] = Field(None, description="Knowledge base entry ID if source='kb'")
+
+
+class ChatRateRequest(BaseModel):
+    """Request to rate a chat response"""
+    rating: int = Field(..., ge=0, le=5, description="Rating 0-5. 0 = flag for review, 1-5 = satisfaction")
+
+
+class ChatRateResponse(BaseModel):
+    """Response after rating"""
+    message: str
+    chat_id: int
+    rating: int
+    flagged: bool = Field(default=False, description="True if rating=0 and flagged for manager review")
+
+
+class KnowledgeBaseEntry(BaseModel):
+    """Knowledge base entry response"""
+    id: int
+    question: str
+    answer: str
+    keywords: Optional[str] = None
+    confidence: float
+    author_id: Optional[int] = None
+    is_active: bool = True
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class KnowledgeBaseCreateRequest(BaseModel):
+    """Request to create a KB entry"""
+    question: str = Field(..., min_length=1, max_length=1000)
+    answer: str = Field(..., min_length=1, max_length=5000)
+    keywords: Optional[str] = Field(None, max_length=500, description="Comma-separated keywords")
+    confidence: float = Field(default=0.8, ge=0, le=1)
+
+
+class KnowledgeBaseUpdateRequest(BaseModel):
+    """Request to update a KB entry"""
+    question: Optional[str] = Field(None, min_length=1, max_length=1000)
+    answer: Optional[str] = Field(None, min_length=1, max_length=5000)
+    keywords: Optional[str] = Field(None, max_length=500)
+    confidence: Optional[float] = Field(None, ge=0, le=1)
+    is_active: Optional[bool] = None
+
+
+class FlaggedChatResponse(BaseModel):
+    """Flagged chat entry for manager review"""
+    id: int
+    user_id: int
+    user_email: Optional[str] = None
+    question: str
+    answer: str
+    source: str
+    confidence: Optional[float] = None
+    rating: int
+    kb_entry_id: Optional[int] = None
+    created_at: Optional[str] = None
+    reviewed: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class FlaggedChatListResponse(BaseModel):
+    """List of flagged chats for manager"""
+    flagged_chats: List[FlaggedChatResponse]
+    total: int
+
+
+class ReviewFlaggedRequest(BaseModel):
+    """Request to review a flagged chat"""
+    action: Literal["dismiss", "remove_kb", "disable_author"] = Field(
+        ...,
+        description="dismiss = mark as reviewed, remove_kb = remove KB entry, disable_author = deactivate author's KB entries"
+    )
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class ReviewFlaggedResponse(BaseModel):
+    """Response after reviewing flagged chat"""
+    message: str
+    chat_id: int
+    action_taken: str
+    kb_entries_affected: int = 0
