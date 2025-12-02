@@ -44,7 +44,7 @@ DashX is a full-stack AI-enabled restaurant management system that runs entirely
 | Frontend | React + TypeScript + Vite |
 | Backend | FastAPI (Python 3.11+) |
 | Database | PostgreSQL 15 |
-| Local LLM | Ollama/HuggingFace (stub for development) |
+| Local LLM | TinyLlama/llama.cpp (stub for development) |
 | Container | Docker Compose |
 
 ## 📁 Project Structure
@@ -55,6 +55,7 @@ DashX/
 │   ├── app/
 │   │   ├── main.py       # Main FastAPI application
 │   │   ├── database.py   # Database configuration
+│   │   ├── llm_adapter.py # LLM adapter with local support
 │   │   └── seed.py       # Data seeding script
 │   ├── migrations/       # Alembic database migrations
 │   │   ├── env.py        # Alembic environment config
@@ -66,8 +67,10 @@ DashX/
 │   │   └── smoke_tests.sql # Schema verification
 │   ├── tests/
 │   │   ├── test_health.py
-│   │   └── test_schema.py # Schema integrity tests
+│   │   ├── test_schema.py # Schema integrity tests
+│   │   └── test_local_llm_adapter.py # Local LLM tests
 │   ├── schema_documentation.md  # ER diagrams and design docs
+│   ├── config.example.env       # Config template
 │   ├── alembic.ini       # Alembic configuration
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -78,10 +81,21 @@ DashX/
 │   │   └── test/
 │   ├── Dockerfile
 │   └── package.json
-├── llm-stub/             # Local LLM stub service
+├── llm-stub/             # Local LLM stub service (development)
 │   ├── main.py
 │   ├── Dockerfile
 │   └── requirements.txt
+├── local-llm/            # Local LLM service (production)
+│   ├── main.py           # FastAPI server with llama.cpp
+│   ├── Dockerfile
+│   └── requirements.txt
+├── models/               # Model files (gitignored)
+│   └── local-llm/        # GGUF model storage
+│       └── model.gguf    # Downloaded model file
+├── scripts/              # Utility scripts
+│   └── download_model.sh # Model download script
+├── tests/                # Integration tests
+│   └── test_local_llm_integration.sh
 ├── docker-compose.yml    # Docker Compose configuration
 ├── run-local.sh          # Quick start script
 ├── run-tests.sh          # Test runner script
@@ -192,6 +206,65 @@ Expected response:
 ```json
 {"status":"ok","model":"stub-llm-v1","message":"LLM Stub service is running. Replace with Ollama/HF for production."}
 ```
+
+## 🤖 Local LLM Service (Optional)
+
+For production-ready local AI, you can run a real language model instead of the stub:
+
+### Quick Setup
+
+```bash
+# 1. Download the model (~600MB)
+chmod +x scripts/download_model.sh
+./scripts/download_model.sh
+
+# 2. Start the local LLM service
+docker compose --profile local-llm up -d local-llm
+
+# 3. Verify it's running
+curl http://localhost:8080/health
+```
+
+Expected response:
+```json
+{"status":"ok","model_loaded":true,"stub_mode":false,"model_path":"/models/model.gguf","message":"Model loaded and ready"}
+```
+
+### Test Generation
+
+```bash
+curl -X POST http://localhost:8080/v1/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Hello, what dishes do you recommend?","max_tokens":64}'
+```
+
+Expected response:
+```json
+{"text":"I'd be happy to help you with dish recommendations...","tokens_used":32,"model":"local-llm","latency_ms":1250.5}
+```
+
+### Enable for Backend
+
+To make the backend use the local LLM instead of the stub:
+
+```bash
+ENABLE_LOCAL_LLM=true docker compose --profile local-llm up -d
+```
+
+Or add to your `.env`:
+```
+ENABLE_LOCAL_LLM=true
+LLM_ADAPTER=local
+```
+
+### Resource Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| RAM | 2GB | 4GB |
+| CPU | 1 core | 2+ cores |
+| Disk | 1GB | 2GB |
+
 
 ## 🛠️ Development
 

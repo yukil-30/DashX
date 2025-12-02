@@ -26,6 +26,9 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://restaurant_user:restaurant_password@postgres:5432/restaurant_db}
       LLM_STUB_URL: ${LLM_STUB_URL:-http://llm-stub:8001}
+      LOCAL_LLM_URL: ${LOCAL_LLM_URL:-http://local-llm:8080}
+      LLM_ADAPTER: ${LLM_ADAPTER:-stub}
+      ENABLE_LOCAL_LLM: ${ENABLE_LOCAL_LLM:-false}
       DEBUG: ${DEBUG:-true}
     ports:
       - "8000:8000"
@@ -69,6 +72,50 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  # Local LLM Service - Runs a small language model locally
+  # 
+  # Setup:
+  #   1. Download a model: ./scripts/download_model.sh
+  #   2. Enable service: ENABLE_LOCAL_LLM=true docker compose up local-llm
+  #
+  # To use a different model:
+  #   - Place your GGUF model at ./models/local-llm/model.gguf
+  #   - Or set MODEL_URL before running download script
+  #
+  # For stub mode (no model, canned responses):
+  #   STUB_MODE=true docker compose up local-llm
+  #
+  local-llm:
+    build:
+      context: ./local-llm
+      dockerfile: Dockerfile
+    container_name: restaurant_local_llm
+    environment:
+      MODEL_PATH: /models/model.gguf
+      N_CTX: ${LOCAL_LLM_CTX:-2048}
+      N_THREADS: ${LOCAL_LLM_THREADS:-4}
+      N_GPU_LAYERS: ${LOCAL_LLM_GPU_LAYERS:-0}
+      STUB_MODE: ${LOCAL_LLM_STUB_MODE:-false}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models/local-llm:/models:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "${LOCAL_LLM_CPUS:-1.0}"
+          memory: "${LOCAL_LLM_MEMORY:-2g}"
+        reservations:
+          memory: "512m"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    profiles:
+      - local-llm  # Only start when explicitly requested or ENABLE_LOCAL_LLM=true
 
 volumes:
   postgres_data:

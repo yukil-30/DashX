@@ -61,3 +61,8 @@ backend/*.egg-info/
 
 # Postgres data (if local)
 postgres_data/
+
+# Local LLM models (large files)
+models/
+*.gguf
+*.bin

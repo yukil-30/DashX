@@ -20,6 +20,9 @@ depends_on = None
 def upgrade():
     """Create voice_reports table for voice-based complaint/compliment system"""
     
+    # Ensure table doesn't exist from failed previous runs
+    op.execute("DROP TABLE IF EXISTS voice_reports CASCADE")
+
     op.create_table(
         'voice_reports',
         sa.Column('id', sa.Integer(), nullable=False),

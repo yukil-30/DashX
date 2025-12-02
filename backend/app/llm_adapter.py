@@ -3,14 +3,17 @@ Local LLM Adapter Interface and Implementations
 
 Provides a pluggable adapter system for different LLM backends:
 - StubAdapter: Returns canned responses (development/testing)
+- LocalLLMAdapter: Connects to the local-llm Docker service (llama.cpp based)
 - OllamaAdapter: Connects to local Ollama instance
 - HuggingFaceAdapter: Uses HuggingFace Transformers locally
 
 Configuration:
 --------------
 Set environment variables to configure:
-  LLM_ADAPTER: 'stub', 'ollama', or 'huggingface' (default: 'stub')
+  LLM_ADAPTER: 'stub', 'local', 'ollama', or 'huggingface' (default: 'stub')
   LLM_STUB_URL: URL for stub service (default: http://llm-stub:8001)
+  LOCAL_LLM_URL: URL for local LLM service (default: http://local-llm:8080)
+  ENABLE_LOCAL_LLM: Set to 'true' to auto-switch to local adapter
   OLLAMA_URL: URL for Ollama API (default: http://localhost:11434)
   OLLAMA_MODEL: Model name for Ollama (default: llama2)
   HF_MODEL: HuggingFace model name (default: gpt2)

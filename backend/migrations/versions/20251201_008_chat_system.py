@@ -111,6 +111,17 @@ def upgrade() -> None:
         ON chat_log(source);
     """)
 
+    # Re-create trigger function if it was dropped in previous migrations
+    op.execute("""
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            NEW.updated_at = CURRENT_TIMESTAMP;
+            RETURN NEW;
+        END;
+        $$ language 'plpgsql';
+    """)
+
     # Apply updated_at trigger to knowledge_base
     op.execute("""
         CREATE TRIGGER update_knowledge_base_updated_at

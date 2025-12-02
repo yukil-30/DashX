@@ -1,0 +1,11 @@
+# FastAPI and server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic>=2.5.0
+
+# llama.cpp Python bindings for local inference
+# This is the core dependency for running GGUF models
+llama-cpp-python==0.2.56
+
+# HTTP client for health checks
+httpx>=0.25.0
