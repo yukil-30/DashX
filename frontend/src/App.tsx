@@ -12,6 +12,7 @@ import DishesPage from './pages/DishesPage'
 import DishDetailPage from './pages/DishDetailPage'
 import CartPage from './pages/CartPage'
 import ChatPage from './pages/ChatPage'
+import ImageSearchPage from './pages/ImageSearchPage'
 import ChefDashboard from './pages/chef/ChefDashboard'
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
@@ -37,6 +38,10 @@ function Navigation() {
             <Link to="/dishes" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
               <span className="hidden sm:inline">Menu</span>
               <span className="sm:hidden text-xl">📖</span>
+            </Link>
+            <Link to="/image-search" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+              <span className="hidden sm:inline">Image Search</span>
+              <span className="sm:hidden text-xl">🔍</span>
             </Link>
             <Link to="/chat" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
               <span className="hidden sm:inline">Support</span>
@@ -137,6 +142,7 @@ function AppRoutes() {
       <Route path="/" element={<HomePage />} />
       <Route path="/dishes" element={<DishesPage />} />
       <Route path="/dishes/:id" element={<DishDetailPage />} />
+      <Route path="/image-search" element={<ImageSearchPage />} />
       <Route path="/chat" element={<ChatPage />} />
 
       {/* Auth Routes */}

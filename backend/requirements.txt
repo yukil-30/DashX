@@ -21,6 +21,12 @@ bcrypt==4.0.1
 python-multipart==0.0.6
 aiofiles==23.2.1
 Pillow==10.1.0
+numpy==1.26.2
+
+# Image search - Hugging Face vision models
+transformers==4.36.0
+torch==2.1.2
+torchvision==0.16.2
 
 # Testing
 pytest==7.4.3

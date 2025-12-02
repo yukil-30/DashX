@@ -1107,6 +1107,196 @@ Access at `/manager/complaints`:
 - `POST /api/ai/recommend` - Get menu recommendations
 - `POST /api/ai/chat` - Natural language interaction
 
+### Image Search API
+
+The image search system allows users to upload photos of food and find similar dishes in the database.
+
+#### Search for Dishes by Image
+```bash
+curl -X POST http://localhost:8000/image-search \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "file=@/path/to/food_photo.jpg" \
+  -F "top_k=5"
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": 3,
+    "name": "Margherita Pizza",
+    "description": "Classic pizza with tomato, mozzarella, and basil",
+    "cost": 1299,
+    "cost_formatted": "$12.99",
+    "picture": "/static/images/pizza.jpg",
+    "average_rating": 4.7,
+    "reviews": 89,
+    "chefID": 2,
+    "restaurantID": 1,
+    "similarity_score": 0.8542
+  },
+  {
+    "id": 7,
+    "name": "Pepperoni Pizza",
+    "description": "Traditional pepperoni pizza",
+    "cost": 1399,
+    "cost_formatted": "$13.99",
+    "picture": "/static/images/pepperoni.jpg",
+    "average_rating": 4.5,
+    "reviews": 67,
+    "chefID": 2,
+    "restaurantID": 1,
+    "similarity_score": 0.7821
+  }
+]
+```
+
+**Implementation Details:**
+- **Default Method**: Color histogram matching (works out-of-the-box)
+  - Extracts RGB color distributions
+  - Compares using chi-squared distance
+  - Fast and requires no external models
+  
+- **Upgrade Option**: CLIP embeddings for semantic similarity
+  - Much better accuracy for food matching
+  - Understands visual concepts beyond just colors
+  - See upgrade instructions below
+
+**File Requirements:**
+- Supported formats: JPG, JPEG, PNG, WebP, GIF
+- Maximum size: 10MB
+- Must be authenticated
+
+#### Get Image Search Status
+```bash
+curl http://localhost:8000/image-search/status \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "method": "color histograms",
+  "total_dishes": 25,
+  "dishes_with_images": 20,
+  "cached_features": 20,
+  "ready": true,
+  "max_file_size_mb": 10,
+  "supported_formats": ["jpg", "jpeg", "png", "webp", "gif"]
+}
+```
+
+#### Precompute Dish Features (Manager Only)
+```bash
+curl -X POST http://localhost:8000/image-search/precompute \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Successfully precomputed features for 20 dishes",
+  "method": "color histograms",
+  "dish_count": 20
+}
+```
+
+**When to use:**
+- After adding new dishes with images
+- When switching between histogram and CLIP mode
+- To rebuild the feature cache
+
+#### Upgrading to CLIP
+
+**Option 1: Local CLIP (Easiest)**
+
+1. Install dependencies:
+```bash
+docker-compose exec backend pip install torch torchvision transformers
+```
+
+2. Enable CLIP in the code:
+```python
+# In backend/app/image_utils.py, line 27
+USE_CLIP = True  # Change from False to True
+```
+
+3. Restart backend:
+```bash
+docker-compose restart backend
+```
+
+4. Precompute features with CLIP:
+```bash
+curl -X POST http://localhost:8000/image-search/precompute \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Option 2: CLIP Service (Production)**
+
+For better isolation and scalability, run CLIP as a separate service:
+
+1. Add to `docker-compose.yml`:
+```yaml
+  clip-service:
+    build: ./clip-service
+    ports:
+      - "8002:8002"
+    environment:
+      - MODEL_NAME=openai/clip-vit-base-patch32
+    volumes:
+      - ./clip-service/cache:/root/.cache
+```
+
+2. Create the service files:
+```bash
+docker-compose exec backend python -c "
+from app.clip_adapter import save_clip_service_code
+save_clip_service_code('./clip-service')
+"
+```
+
+3. Update environment:
+```bash
+# Add to .env
+CLIP_SERVICE_URL=http://clip-service:8002
+USE_CLIP=true
+```
+
+4. Start the service:
+```bash
+docker-compose up --build clip-service
+```
+
+**Performance Comparison:**
+
+| Method | Accuracy | Speed | Dependencies |
+|--------|----------|-------|--------------|
+| Color Histograms | Basic | Fast (~10ms) | None (Pillow only) |
+| CLIP Embeddings | Excellent | Moderate (~100ms CPU) | torch, transformers (~1GB) |
+
+**Example Results:**
+
+*Query: Photo of red curry*
+- **Histogram**: Matches red-colored dishes (tomato soup, red curry, strawberry dessert)
+- **CLIP**: Matches semantically similar dishes (red curry, yellow curry, pad thai)
+
+#### Frontend Integration
+
+The image search page is accessible at `/image-search` and includes:
+- Drag-and-drop or click to upload
+- Image preview before search
+- Loading states with skeleton UI
+- Results displayed as cards with similarity scores
+- Direct links to dish detail pages
+
+**Example Usage:**
+1. Navigate to http://localhost:3000/image-search
+2. Upload a food photo (or drag & drop)
+3. Click "Search for Similar Dishes"
+4. Browse top 5 matching dishes
+5. Click any result to view full details and add to cart
+
 ### Chat & Knowledge Base API
 
 The chat system provides AI-powered Q&A with knowledge base search and LLM fallback.
@@ -1541,6 +1731,13 @@ ORDER BY o.order_datetime DESC;
   - [x] Pluggable LLM adapters (Stub, Ollama, HuggingFace)
   - [x] LLM response caching
   - [x] KB CRUD endpoints
+- [x] Image-Based Food Search
+  - [x] Color histogram baseline (no dependencies)
+  - [x] Image upload & validation
+  - [x] Similarity matching & ranking
+  - [x] Frontend image search page
+  - [x] CLIP integration option (local + service)
+  - [x] Feature caching & precomputation
 - [ ] Menu management API
 - [ ] AI recommendation integration
 - [ ] Kitchen dashboard UI
