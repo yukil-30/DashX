@@ -745,3 +745,76 @@ class ReviewFlaggedResponse(BaseModel):
     chat_id: int
     action_taken: str
     kb_entries_affected: int = 0
+
+
+# ============================================================
+# Voice Report Schemas
+# ============================================================
+
+class VoiceReportSubmitResponse(BaseModel):
+    """Response after submitting a voice report"""
+    message: str
+    report_id: int
+    status: str = "pending"
+    audio_file_path: str
+    file_size_bytes: int
+
+
+class VoiceReportResponse(BaseModel):
+    """Voice report response for manager dashboard"""
+    id: int
+    submitter_id: int
+    submitter_email: Optional[str] = None
+    submitter_type: Optional[str] = None
+    audio_file_path: str
+    audio_url: Optional[str] = None  # URL to stream/download audio
+    file_size_bytes: int
+    duration_seconds: Optional[int] = None
+    mime_type: str
+    transcription: Optional[str] = None
+    sentiment: Optional[str] = None
+    subjects: Optional[List[str]] = None
+    auto_labels: Optional[List[str]] = None
+    confidence_score: Optional[float] = None
+    status: str
+    is_processed: bool
+    related_order_id: Optional[int] = None
+    related_account_id: Optional[int] = None
+    related_account_email: Optional[str] = None
+    processing_error: Optional[str] = None
+    manager_notes: Optional[str] = None
+    resolved_by: Optional[int] = None
+    resolved_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class VoiceReportListResponse(BaseModel):
+    """List of voice reports for manager dashboard"""
+    reports: List[VoiceReportResponse]
+    total: int
+    pending_count: int
+    unresolved_complaints: int
+
+
+class VoiceReportResolveRequest(BaseModel):
+    """Request to resolve a voice report"""
+    action: Literal["dismiss", "warning", "refer_to_complaint"] = Field(
+        ...,
+        description="dismiss = no action, warning = issue warning to subject, refer_to_complaint = create formal complaint"
+    )
+    notes: Optional[str] = Field(None, max_length=2000, description="Manager notes")
+    related_account_id: Optional[int] = Field(None, description="Account ID of person report is about (required for warning)")
+
+
+class VoiceReportResolveResponse(BaseModel):
+    """Response after resolving a voice report"""
+    message: str
+    report_id: int
+    action_taken: str
+    warning_applied: bool = False
+    complaint_created_id: Optional[int] = None
+    resolved_at: str

@@ -425,6 +425,41 @@ Track VIP status changes.
 | changed_by_id | INTEGER | FK -> accounts(id) | Manager who changed |
 | created_at | TIMESTAMPTZ | NOT NULL | Change time |
 
+### 18. voice_reports
+Voice-based complaint/compliment system with automatic transcription and NLP analysis.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | SERIAL | PRIMARY KEY | Unique identifier |
+| submitter_id | INTEGER | NOT NULL, FK -> accounts(id) CASCADE | User who submitted |
+| audio_file_path | TEXT | NOT NULL | Path to stored audio file |
+| file_size_bytes | INTEGER | NOT NULL | File size in bytes |
+| duration_seconds | INTEGER | | Audio duration |
+| mime_type | VARCHAR(100) | NOT NULL DEFAULT 'audio/mpeg' | Audio MIME type |
+| transcription | TEXT | | Transcribed text |
+| sentiment | VARCHAR(50) | | complaint, compliment, neutral |
+| subjects | JSONB | | Extracted subjects array |
+| auto_labels | JSONB | | Auto-generated label array |
+| confidence_score | NUMERIC(3,2) | CHECK 0-1 | NLP confidence |
+| status | VARCHAR(50) | NOT NULL DEFAULT 'pending' | Processing status |
+| is_processed | BOOLEAN | NOT NULL DEFAULT FALSE | Processing complete |
+| related_order_id | INTEGER | FK -> orders(id) SET NULL | Related order |
+| related_account_id | INTEGER | FK -> accounts(id) SET NULL | Person being reported |
+| processing_error | TEXT | | Error message if failed |
+| manager_notes | TEXT | | Manager resolution notes |
+| resolved_by | INTEGER | FK -> accounts(id) SET NULL | Resolving manager |
+| resolved_at | TEXT | | ISO timestamp |
+| created_at | TEXT | NOT NULL | ISO timestamp |
+| updated_at | TEXT | NOT NULL | ISO timestamp |
+
+**Status values:** `pending`, `transcribed`, `analyzed`, `resolved`, `error`
+
+**Sentiment values:** `complaint`, `compliment`, `neutral`
+
+**Subjects array example:** `["chef", "driver", "food", "service"]`
+
+**Auto-labels array example:** `["Complaint Chef", "Food Quality Issue", "Delivery Issue"]`
+
 ---
 
 ## Design Decisions & Deviations

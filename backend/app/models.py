@@ -366,3 +366,36 @@ class ChatLog(Base):
     user = relationship("Account", foreign_keys=[user_id])
     kb_entry = relationship("KnowledgeBase", back_populates="chat_logs")
     reviewer = relationship("Account", foreign_keys=[reviewed_by])
+
+
+class VoiceReport(Base):
+    """Voice-based complaint/compliment reports with transcription and NLP analysis"""
+    __tablename__ = "voice_reports"
+
+    id = Column(Integer, primary_key=True)
+    submitter_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    audio_file_path = Column(Text, nullable=False)  # Path to stored audio file
+    file_size_bytes = Column(Integer, nullable=False)
+    duration_seconds = Column(Integer, nullable=True)
+    mime_type = Column(String(100), nullable=False, default='audio/mpeg')
+    transcription = Column(Text, nullable=True)  # Transcribed text
+    sentiment = Column(String(50), nullable=True)  # complaint, compliment, neutral
+    subjects = Column(JSONB, nullable=True)  # Extracted subjects: ["chef", "driver", "staff"]
+    auto_labels = Column(JSONB, nullable=True)  # Auto-generated labels: ["Complaint Chef", "Food Quality"]
+    confidence_score = Column(Numeric(3, 2), nullable=True)  # NLP confidence 0.00-1.00
+    status = Column(String(50), nullable=False, default='pending')  # pending, transcribed, analyzed, resolved
+    is_processed = Column(Boolean, nullable=False, default=False)  # Has transcription & NLP completed
+    related_order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    related_account_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    processing_error = Column(Text, nullable=True)  # Error message if processing fails
+    manager_notes = Column(Text, nullable=True)
+    resolved_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    resolved_at = Column(Text, nullable=True)  # ISO timestamp
+    created_at = Column(Text, nullable=False)
+    updated_at = Column(Text, nullable=False)
+
+    # Relationships
+    submitter = relationship("Account", foreign_keys=[submitter_id], backref="voice_reports_submitted")
+    related_account = relationship("Account", foreign_keys=[related_account_id])
+    related_order = relationship("Order", foreign_keys=[related_order_id])
+    resolver = relationship("Account", foreign_keys=[resolved_by])

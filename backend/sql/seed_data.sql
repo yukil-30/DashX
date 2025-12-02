@@ -498,6 +498,138 @@ COMMIT;
 -- =============================================================================
 -- VERIFICATION QUERIES
 -- =============================================================================
+-- VOICE REPORTS
+-- =============================================================================
+-- Example voice reports demonstrating different scenarios
+
+-- Voice Report 1: Customer complaint about chef (pending processing)
+INSERT INTO voice_reports (
+    id, submitter_id, audio_file_path, file_size_bytes, duration_seconds,
+    mime_type, status, is_processed, created_at, updated_at
+)
+VALUES (
+    1,
+    6,  -- Customer Alice
+    'backend/static/voice_reports/voice_6_20251202_complaint_chef.mp3',
+    45632,
+    18,
+    'audio/mpeg',
+    'pending',
+    false,
+    '2025-12-02T09:15:00Z',
+    '2025-12-02T09:15:00Z'
+);
+
+-- Voice Report 2: VIP compliment about delivery person (analyzed)
+INSERT INTO voice_reports (
+    id, submitter_id, audio_file_path, file_size_bytes, duration_seconds,
+    mime_type, transcription, sentiment, subjects, auto_labels, confidence_score,
+    status, is_processed, related_order_id, related_account_id,
+    created_at, updated_at
+)
+VALUES (
+    2,
+    9,  -- VIP Grace
+    'backend/static/voice_reports/voice_9_20251202_compliment_delivery.mp3',
+    38421,
+    15,
+    'audio/mpeg',
+    'I just wanted to say the delivery person was excellent today. They arrived exactly on time and were very professional and courteous. The food was still hot and perfectly packaged. Really impressed with the service!',
+    'compliment',
+    '["driver", "delivery", "service"]'::jsonb,
+    '["Compliment Delivery Person", "Excellent Delivery", "Excellent Service"]'::jsonb,
+    0.89,
+    'analyzed',
+    true,
+    9,  -- Related to order 9
+    5,  -- Delivery person Frank
+    '2025-12-01T18:30:00Z',
+    '2025-12-01T18:31:00Z'
+);
+
+-- Voice Report 3: Customer complaint about late delivery (analyzed, resolved)
+INSERT INTO voice_reports (
+    id, submitter_id, audio_file_path, file_size_bytes, duration_seconds,
+    mime_type, transcription, sentiment, subjects, auto_labels, confidence_score,
+    status, is_processed, related_order_id, related_account_id,
+    manager_notes, resolved_by, resolved_at, created_at, updated_at
+)
+VALUES (
+    3,
+    7,  -- Customer Bob
+    'backend/static/voice_reports/voice_7_20251201_complaint_late.mp3',
+    52134,
+    21,
+    'audio/mpeg',
+    'My order was over 45 minutes late today. The driver called saying they got lost finding my address, but I provided clear directions. The food arrived cold and I had to reheat everything. Really disappointing experience after waiting so long.',
+    'complaint',
+    '["driver", "delivery", "food"]'::jsonb,
+    '["Complaint Delivery Person", "Delivery Issue", "Food Quality Issue"]'::jsonb,
+    0.85,
+    'resolved',
+    true,
+    8,  -- Related to order 8
+    4,  -- Delivery person Eve
+    'Legitimate complaint. Issued warning to delivery person for navigation issues.',
+    1,  -- Resolved by Manager
+    '2025-12-01T20:00:00Z',
+    '2025-12-01T19:00:00Z',
+    '2025-12-01T20:00:00Z'
+);
+
+-- Voice Report 4: Delivery person compliment about customer (analyzed)
+INSERT INTO voice_reports (
+    id, submitter_id, audio_file_path, file_size_bytes, duration_seconds,
+    mime_type, transcription, sentiment, subjects, auto_labels, confidence_score,
+    status, is_processed, created_at, updated_at
+)
+VALUES (
+    4,
+    5,  -- Delivery person Frank
+    'backend/static/voice_reports/voice_5_20251202_feedback.mp3',
+    29876,
+    12,
+    'audio/mpeg',
+    'Just wanted to provide positive feedback. The customer was very understanding when I was running a few minutes behind. They even helped me with the heavy bags. Really appreciate working with respectful customers.',
+    'compliment',
+    '["service"]'::jsonb,
+    '["General Compliment", "Excellent Service"]'::jsonb,
+    0.78,
+    'analyzed',
+    true,
+    '2025-12-02T10:00:00Z',
+    '2025-12-02T10:01:00Z'
+);
+
+-- Voice Report 5: Customer complaint about food quality (analyzed, needs resolution)
+INSERT INTO voice_reports (
+    id, submitter_id, audio_file_path, file_size_bytes, duration_seconds,
+    mime_type, transcription, sentiment, subjects, auto_labels, confidence_score,
+    status, is_processed, related_account_id, created_at, updated_at
+)
+VALUES (
+    5,
+    8,  -- Customer Carol
+    'backend/static/voice_reports/voice_8_20251202_complaint_food.mp3',
+    61234,
+    25,
+    'audio/mpeg',
+    'I need to file a complaint about my recent order. The pasta was severely undercooked and the sauce was cold. This is clearly a kitchen preparation issue. The chef did not follow basic cooking standards. I expect better quality from your restaurant.',
+    'complaint',
+    '["chef", "food", "kitchen"]'::jsonb,
+    '["Complaint Chef", "Food Quality Issue"]'::jsonb,
+    0.92,
+    'analyzed',
+    true,
+    2,  -- Chef Bob
+    '2025-12-02T11:00:00Z',
+    '2025-12-02T11:02:00Z'
+);
+
+-- Reset sequence for voice_reports
+SELECT setval('voice_reports_id_seq', 5, true);
+
+-- =============================================================================
 
 -- Verify data was inserted correctly
 DO $$
@@ -519,6 +651,10 @@ BEGIN
     -- Check bid
     SELECT COUNT(*) INTO v_count FROM bid;
     RAISE NOTICE 'Bids created: %', v_count;
+    
+    -- Check voice reports
+    SELECT COUNT(*) INTO v_count FROM voice_reports;
+    RAISE NOTICE 'Voice reports created: %', v_count;
     
     RAISE NOTICE 'Seed data loaded successfully!';
 END $$;

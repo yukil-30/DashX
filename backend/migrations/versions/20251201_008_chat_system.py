@@ -1,7 +1,7 @@
 """Add knowledge base and chat log tables for chat flow
 
 Revision ID: 008_chat_system
-Revises: 20251202_004_authoritative_schema
+Revises: 007_reputation_system
 Create Date: 2025-12-01
 
 Design Decisions:
@@ -26,7 +26,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '008_chat_system'
-down_revision: Union[str, None] = '20251202_004_authoritative_schema'
+down_revision: Union[str, None] = '007_reputation_system'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

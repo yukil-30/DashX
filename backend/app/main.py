@@ -46,19 +46,25 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Static images dir: {STATIC_IMAGES_DIR}")
     
     # Start background tasks
-    background_task = None
+    background_tasks = []
     if os.getenv("ENABLE_BACKGROUND_TASKS", "true").lower() == "true":
-        from app.background_tasks import periodic_performance_evaluation
-        background_task = asyncio.create_task(periodic_performance_evaluation())
+        from app.background_tasks import periodic_performance_evaluation, periodic_voice_report_processing
+        
+        perf_task = asyncio.create_task(periodic_performance_evaluation())
+        background_tasks.append(perf_task)
         logger.info("   Background performance evaluation task started")
+        
+        voice_task = asyncio.create_task(periodic_voice_report_processing())
+        background_tasks.append(voice_task)
+        logger.info("   Background voice report processing task started")
     
     yield
     
     # Shutdown
-    if background_task:
-        background_task.cancel()
+    for task in background_tasks:
+        task.cancel()
         try:
-            await background_task
+            await task
         except asyncio.CancelledError:
             pass
     logger.info("👋 Shutting down API...")
@@ -190,7 +196,7 @@ async def root():
 
 
 # Import and register routers
-from app.routers import auth, account, dishes, home, orders, bids, reputation, chat, image_search
+from app.routers import auth, account, dishes, home, orders, bids, reputation, chat, image_search, voice_reports
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(dishes.router)
@@ -200,6 +206,7 @@ app.include_router(bids.router)
 app.include_router(reputation.router)
 app.include_router(chat.router)
 app.include_router(image_search.router)
+app.include_router(voice_reports.router)
 
 
 @app.post("/admin/evaluate-performance", tags=["Admin"])

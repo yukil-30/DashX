@@ -32,6 +32,7 @@ DashX is a full-stack AI-enabled restaurant management system that runs entirely
 - ✅ **Delivery Bidding System**: Competitive bidding with manager assignment
 - ✅ **Chat System**: Full-text search knowledge base + LLM fallback
 - ✅ **Reputation System**: Complaints, warnings, demotion, and firing logic
+- ✅ **Voice Reporting**: Audio complaints with transcription and NLP analysis
 - ✅ **VIP Benefits**: 5% discounts and free delivery credits
 - ✅ **Transaction Audit**: Immutable financial transaction logging
 - ✅ **Comprehensive Tests**: Unit and integration test coverage
@@ -1156,11 +1157,18 @@ curl -X POST http://localhost:8000/image-search \
   - Extracts RGB color distributions
   - Compares using chi-squared distance
   - Fast and requires no external models
-  
-- **Upgrade Option**: CLIP embeddings for semantic similarity
-  - Much better accuracy for food matching
+
+- **Hugging Face Vision Model** (nateraw/food)
+  - Specialized food classification model
+  - Better accuracy for food items
+  - Requires `transformers` library
+  - Set `USE_HUGGINGFACE=True` in `app/image_utils.py`
+
+- **CLIP Embeddings** (Best Accuracy)
+  - Semantic similarity matching
   - Understands visual concepts beyond just colors
-  - See upgrade instructions below
+  - Can run locally or as a microservice
+  - Set `USE_CLIP=True` in `app/image_utils.py`
 
 **File Requirements:**
 - Supported formats: JPG, JPEG, PNG, WebP, GIF
@@ -1273,12 +1281,14 @@ docker-compose up --build clip-service
 | Method | Accuracy | Speed | Dependencies |
 |--------|----------|-------|--------------|
 | Color Histograms | Basic | Fast (~10ms) | None (Pillow only) |
+| HF Vision Model | Good | Moderate (~80ms CPU) | torch, transformers (~500MB) |
 | CLIP Embeddings | Excellent | Moderate (~100ms CPU) | torch, transformers (~1GB) |
 
 **Example Results:**
 
 *Query: Photo of red curry*
 - **Histogram**: Matches red-colored dishes (tomato soup, red curry, strawberry dessert)
+- **HF Vision**: Matches food types (curry, soup, stew)
 - **CLIP**: Matches semantically similar dishes (red curry, yellow curry, pad thai)
 
 #### Frontend Integration
@@ -1296,6 +1306,68 @@ The image search page is accessible at `/image-search` and includes:
 3. Click "Search for Similar Dishes"
 4. Browse top 5 matching dishes
 5. Click any result to view full details and add to cart
+
+### Voice Reporting API
+
+The voice reporting system allows users to submit audio complaints or compliments, which are automatically transcribed and analyzed using NLP.
+
+#### Submit Voice Report
+```bash
+curl -X POST http://localhost:8000/voice-reports/submit \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "audio_file=@/path/to/recording.mp3" \
+  -F "related_order_id=123"
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Voice report submitted successfully. Processing will begin shortly.",
+  "report_id": 42,
+  "status": "pending"
+}
+```
+
+**Features:**
+- **Automatic Transcription**: Converts speech to text
+- **NLP Analysis**: Detects sentiment (complaint/compliment) and extracts subjects (e.g., "delivery", "food quality")
+- **Auto-Labeling**: Tags reports for easier filtering
+
+#### Manager Dashboard (Voice)
+```bash
+curl "http://localhost:8000/voice-reports/manager/dashboard?sentiment=complaint" \
+  -H "Authorization: Bearer MANAGER_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+{
+  "reports": [
+    {
+      "id": 42,
+      "transcription": "The delivery was very fast and the driver was polite.",
+      "sentiment": "compliment",
+      "subjects": ["delivery", "driver"],
+      "audio_url": "/voice-reports/audio/42",
+      "status": "analyzed"
+    }
+  ]
+}
+```
+
+#### Resolve Voice Report (Manager Only)
+```bash
+curl -X POST http://localhost:8000/voice-reports/42/resolve \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer MANAGER_TOKEN" \
+  -d '{
+    "action": "warning",
+    "related_account_id": 5,
+    "notes": "Driver was rude based on audio evidence"
+  }'
+```
+
+**Actions:** `dismiss`, `warning`, `refer_to_complaint`
 
 ### Chat & Knowledge Base API
 
@@ -1738,6 +1810,12 @@ ORDER BY o.order_datetime DESC;
   - [x] Frontend image search page
   - [x] CLIP integration option (local + service)
   - [x] Feature caching & precomputation
+- [x] Voice Reporting System
+  - [x] Audio file upload & validation
+  - [x] Automatic transcription (Stub/Whisper)
+  - [x] NLP analysis (Sentiment & Subjects)
+  - [x] Manager dashboard for voice reports
+  - [x] Resolution workflow (Warning/Complaint)
 - [ ] Menu management API
 - [ ] AI recommendation integration
 - [ ] Kitchen dashboard UI

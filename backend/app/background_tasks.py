@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import SessionLocal
-from app.models import Account, Complaint, Dish, ManagerNotification, DeliveryRating
+from app.models import Account, Complaint, Dish, ManagerNotification, DeliveryRating, VoiceReport
+from app.audio_transcription_adapter import get_transcription_service
+from app.voice_report_nlp import get_nlp_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -223,5 +225,158 @@ def run_immediate_evaluation():
             "delivery_evaluations": delivery_results,
             "timestamp": get_iso_now()
         }
+    finally:
+        db.close()
+
+
+def process_voice_report(db: Session, report_id: int) -> dict:
+    """
+    Process a voice report: transcribe audio and run NLP analysis
+    
+    Args:
+        db: Database session
+        report_id: ID of the voice report to process
+        
+    Returns:
+        Dictionary with processing results
+    """
+    report = db.query(VoiceReport).filter(VoiceReport.id == report_id).first()
+    
+    if not report:
+        logger.error(f"Voice report {report_id} not found")
+        return {"success": False, "error": "Report not found"}
+    
+    if report.is_processed:
+        logger.info(f"Voice report {report_id} already processed")
+        return {"success": True, "message": "Already processed"}
+    
+    try:
+        # Step 1: Transcribe audio
+        logger.info(f"Transcribing voice report {report_id}...")
+        transcription_service = get_transcription_service(use_stub=True)
+        transcription, confidence, duration = transcription_service.transcribe_audio(report.audio_file_path)
+        
+        if not transcription:
+            error_msg = "Transcription failed"
+            report.processing_error = error_msg
+            report.status = "error"
+            db.commit()
+            logger.error(f"Voice report {report_id}: {error_msg}")
+            return {"success": False, "error": error_msg}
+        
+        # Update report with transcription
+        report.transcription = transcription
+        if duration:
+            report.duration_seconds = duration
+        report.status = "transcribed"
+        db.commit()
+        logger.info(f"Voice report {report_id} transcribed: {len(transcription)} chars")
+        
+        # Step 2: Run NLP analysis
+        logger.info(f"Analyzing voice report {report_id}...")
+        nlp_analyzer = get_nlp_analyzer(use_advanced_nlp=False)
+        analysis = nlp_analyzer.analyze_report(transcription)
+        
+        # Update report with analysis
+        report.sentiment = analysis['sentiment']
+        report.subjects = analysis['subjects']
+        report.auto_labels = analysis['auto_labels']
+        report.confidence_score = analysis['confidence']
+        report.status = "analyzed"
+        report.is_processed = True
+        report.updated_at = get_iso_now()
+        db.commit()
+        
+        logger.info(
+            f"Voice report {report_id} analyzed: "
+            f"sentiment={analysis['sentiment']}, "
+            f"subjects={analysis['subjects']}, "
+            f"labels={analysis['auto_labels']}"
+        )
+        
+        # Step 3: Create notification for managers if it's a complaint
+        if report.sentiment == 'complaint':
+            submitter = db.query(Account).filter(Account.ID == report.submitter_id).first()
+            submitter_email = submitter.email if submitter else "Unknown"
+            
+            create_notification(
+                db,
+                notification_type="voice_complaint_received",
+                title=f"New Voice Complaint from {submitter_email}",
+                message=f"Labels: {', '.join(analysis['auto_labels'])}. Transcription: {transcription[:200]}...",
+                related_account_id=report.related_account_id
+            )
+            db.commit()
+            logger.info(f"Created notification for voice complaint {report_id}")
+        
+        return {
+            "success": True,
+            "report_id": report_id,
+            "sentiment": analysis['sentiment'],
+            "subjects": analysis['subjects'],
+            "labels": analysis['auto_labels'],
+            "transcription_length": len(transcription)
+        }
+        
+    except Exception as e:
+        error_msg = f"Processing error: {str(e)}"
+        report.processing_error = error_msg
+        report.status = "error"
+        db.commit()
+        logger.error(f"Voice report {report_id} processing failed: {e}", exc_info=True)
+        return {"success": False, "error": error_msg}
+
+
+async def periodic_voice_report_processing():
+    """
+    Background task to process pending voice reports.
+    Runs every 30 seconds to pick up new reports.
+    """
+    interval_seconds = 30
+    
+    while True:
+        try:
+            logger.debug("Checking for pending voice reports...")
+            
+            db = SessionLocal()
+            try:
+                # Find unprocessed reports
+                pending_reports = db.query(VoiceReport).filter(
+                    VoiceReport.is_processed == False,
+                    VoiceReport.status.in_(["pending", "error"])
+                ).limit(10).all()  # Process up to 10 at a time
+                
+                if pending_reports:
+                    logger.info(f"Processing {len(pending_reports)} pending voice reports...")
+                    
+                    for report in pending_reports:
+                        result = process_voice_report(db, report.id)
+                        if result['success']:
+                            logger.info(f"Successfully processed voice report {report.id}")
+                        else:
+                            logger.error(f"Failed to process voice report {report.id}: {result.get('error')}")
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error in periodic voice report processing: {e}", exc_info=True)
+        
+        await asyncio.sleep(interval_seconds)
+
+
+def process_voice_report_immediate(report_id: int) -> dict:
+    """
+    Process a voice report immediately (for testing or manual trigger).
+    
+    Args:
+        report_id: ID of the voice report to process
+        
+    Returns:
+        Dictionary with processing results
+    """
+    db = SessionLocal()
+    try:
+        return process_voice_report(db, report_id)
     finally:
         db.close()
