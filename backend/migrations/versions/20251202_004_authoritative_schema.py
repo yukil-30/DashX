@@ -124,7 +124,7 @@ def upgrade() -> None:
         CREATE TABLE orders (
             id SERIAL PRIMARY KEY,
             "accountID" INTEGER NOT NULL REFERENCES accounts("ID") ON DELETE RESTRICT,
-            "dateTime" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "dateTime" TEXT,
             "finalCost" INTEGER NOT NULL CHECK ("finalCost" >= 0),
             status VARCHAR(50) NOT NULL DEFAULT 'pending',
             "bidID" INTEGER,

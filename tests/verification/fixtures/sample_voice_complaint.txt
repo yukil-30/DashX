@@ -1,0 +1,4 @@
+# This is a placeholder for a sample voice complaint audio file
+# In production, this would be an actual .wav or .mp3 file
+# For testing, the test suite generates mock audio data
+MOCK_AUDIO_PLACEHOLDER=true

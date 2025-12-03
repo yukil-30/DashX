@@ -326,6 +326,13 @@ async def file_complaint(
     # Validate about_user_id if provided
     about_account = None
     if request.about_user_id:
+        # Prevent self-complaints
+        if request.about_user_id == current_user.ID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot file a complaint about yourself"
+            )
+        
         about_account = db.query(Account).filter(Account.ID == request.about_user_id).first()
         if not about_account:
             raise HTTPException(
@@ -375,7 +382,7 @@ async def file_complaint(
         resolution=complaint.resolution,
         resolved_by=complaint.resolved_by,
         resolved_at=complaint.resolved_at,
-        created_at=complaint.created_at
+        created_at=complaint.created_at.isoformat() if hasattr(complaint.created_at, "isoformat") else complaint.created_at
     )
 
 
@@ -422,7 +429,7 @@ async def list_complaints(
             resolution=c.resolution,
             resolved_by=c.resolved_by,
             resolved_at=c.resolved_at,
-            created_at=c.created_at
+            created_at=c.created_at.isoformat() if hasattr(c.created_at, "isoformat") else c.created_at
         ))
     
     return ComplaintListResponse(
@@ -462,7 +469,7 @@ async def get_complaint(
         resolution=complaint.resolution,
         resolved_by=complaint.resolved_by,
         resolved_at=complaint.resolved_at,
-        created_at=complaint.created_at
+        created_at=complaint.created_at.isoformat() if hasattr(complaint.created_at, "isoformat") else complaint.created_at
     )
 
 

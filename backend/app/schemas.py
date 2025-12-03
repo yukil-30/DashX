@@ -55,6 +55,7 @@ class UserProfile(BaseModel):
     warnings: int = 0
     wage: Optional[int] = None
     restaurantID: Optional[int] = None
+    free_delivery_credits: int = 0
 
     class Config:
         from_attributes = True

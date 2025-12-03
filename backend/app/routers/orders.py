@@ -126,7 +126,7 @@ async def list_orders(
         result.append(OrderResponse(
             id=order.id,
             accountID=order.accountID,
-            dateTime=order.dateTime,
+            dateTime=order.dateTime.isoformat() if hasattr(order.dateTime, 'isoformat') else order.dateTime,
             finalCost=order.finalCost,
             status=order.status,
             bidID=order.bidID,
@@ -310,7 +310,7 @@ async def create_order(
             order=OrderResponse(
                 id=order.id,
                 accountID=order.accountID,
-                dateTime=order.dateTime,
+                dateTime=order.dateTime.isoformat() if hasattr(order.dateTime, 'isoformat') else order.dateTime,
                 finalCost=order.finalCost,
                 status=order.status,
                 bidID=order.bidID,
@@ -375,7 +375,7 @@ async def get_order(
     return OrderResponse(
         id=order.id,
         accountID=order.accountID,
-        dateTime=order.dateTime,
+        dateTime=order.dateTime.isoformat() if hasattr(order.dateTime, 'isoformat') else order.dateTime,
         finalCost=order.finalCost,
         status=order.status,
         bidID=order.bidID,
