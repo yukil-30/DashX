@@ -47,10 +47,6 @@ def dish_to_response(dish: Dish) -> DishResponse:
         average_rating=float(dish.average_rating or 0),
         reviews=dish.reviews,
         chefID=dish.chefID,
-        chef={
-            "name": dish.chef.name
-        } if dish.chef else None,
-
         restaurantID=dish.restaurantID
     )
 

@@ -159,10 +159,10 @@ export default function DishDetailPage() {
           )}
 
           {/* Chef Info */}
-          {dish.chef && (
+          {dish.chefID && (
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Chef Information</h3>
-              <p className="text-gray-600">Chef Name: {dish.chef.name}</p>
+              <p className="text-gray-600">Chef ID: {dish.chefID}</p>
             </div>
           )}
         </div>
