@@ -143,11 +143,11 @@ docker-compose up --build
 
 | Email | Password | Role | Balance |
 |-------|----------|------|---------|
-| `manager@test.com` | `password123` | Manager | $5,000 |
-| `chef@test.com` | `password123` | Chef | - |
-| `delivery@test.com` | `password123` | Delivery | - |
-| `customer@test.com` | `password123` | Customer | $100 |
-| `vip@test.com` | `password123` | VIP | $1,000 |
+| `manager@dashxbistro.com` | `password123` | Manager | $5,000 |
+| `chef.gordon@dashxbistro.com` | `password123` | Chef | - |
+| `delivery.mike@dashxbistro.com` | `password123` | Delivery | - |
+| `customer.jane@example.com` | `password123` | Customer | $100 |
+| `vip.john@example.com` | `password123` | VIP | $1,000 |
 
 ## 🧪 Running Tests
 
