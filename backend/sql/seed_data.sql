@@ -36,7 +36,7 @@ SELECT setval('restaurant_id_seq', 1, true);
 -- =============================================================================
 -- Password hash is bcrypt hash of 'password123' for all test accounts
 -- In production, use proper unique passwords!
--- $2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi
+-- $2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW
 
 -- Manager (ID: 1)
 INSERT INTO accounts ("ID", "restaurantID", email, password, warnings, type, balance, wage)
@@ -44,7 +44,7 @@ VALUES (
     1,
     1,
     'manager@dashxbistro.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'manager',
     500000,  -- $5000.00 balance
@@ -57,7 +57,7 @@ VALUES (
     2,
     1,
     'chef.gordon@dashxbistro.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'chef',
     250000,  -- $2500.00 balance
@@ -70,7 +70,7 @@ VALUES (
     3,
     1,
     'chef.julia@dashxbistro.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'chef',
     180000,  -- $1800.00 balance
@@ -83,7 +83,7 @@ VALUES (
     4,
     1,
     'delivery.mike@dashxbistro.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'delivery',
     75000,   -- $750.00 balance
@@ -96,7 +96,7 @@ VALUES (
     5,
     1,
     'delivery.lisa@dashxbistro.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     1,        -- Has 1 warning
     'delivery',
     60000,   -- $600.00 balance
@@ -109,7 +109,7 @@ VALUES (
     6,
     NULL,
     'vip.john@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'vip',
     100000,  -- $1000.00 balance - enough for orders
@@ -122,7 +122,7 @@ VALUES (
     7,
     NULL,
     'customer.jane@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'customer',
     5000,    -- $50.00 balance - limited funds
@@ -135,7 +135,7 @@ VALUES (
     8,
     NULL,
     'customer.bob@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'customer',
     25000,   -- $250.00 balance
@@ -148,7 +148,7 @@ VALUES (
     9,
     NULL,
     'customer.alice@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     2,       -- Has 2 warnings
     'customer',
     150,     -- $1.50 balance - insufficient for most orders (test failure)
@@ -161,7 +161,7 @@ VALUES (
     10,
     NULL,
     'customer.charlie@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'customer',
     35000,   -- $350.00 balance
@@ -174,7 +174,7 @@ VALUES (
     11,
     NULL,
     'visitor@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi',
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW',
     0,
     'visitor',
     0,
@@ -476,7 +476,7 @@ INSERT INTO "openRequest" (id, email, password)
 VALUES (
     1,
     'newchef.applicant@example.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.KQfQU3Vr6Y8AAi'
+    '$2b$12$OGvXcUpR36d4ExhesnMHVu9vhAOSJciw6fsmgJcRMH7ZgwD2SkiWW'
 );
 
 -- Reset sequence
