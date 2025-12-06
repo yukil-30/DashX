@@ -136,7 +136,7 @@ async def get_dish(
 
 @router.post("", response_model=DishResponse, status_code=status.HTTP_201_CREATED)
 async def create_dish(
-    dish_data: str = Form(...),                 # ⬅ CHANGED
+    dish_data: str = Form(...),                 
     image: UploadFile | None = File(None),
     current_user: Account = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -146,7 +146,7 @@ async def create_dish(
     """
 
     # Convert JSON string from FormData → Pydantic model
-    dish_data = DishCreateRequest(**json.loads(dish_data))   # ⬅ ADDED
+    dish_data = DishCreateRequest(**json.loads(dish_data))   
 
     # Validate name - prevent XSS
     name = dish_data.name.strip()
@@ -171,6 +171,7 @@ async def create_dish(
     # Get restaurant_id (use first restaurant if not assigned)
     restaurant_id = current_user.restaurantID
     if not restaurant_id:
+	# Use default restaurant (ID 1)
         restaurant_id = 1
         
     # Handle image upload
