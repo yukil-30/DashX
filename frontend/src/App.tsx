@@ -14,6 +14,7 @@ import CartPage from './pages/CartPage'
 import ChatPage from './pages/ChatPage'
 import ImageSearchPage from './pages/ImageSearchPage'
 import ChefDashboard from './pages/chef/ChefDashboard'
+import CreateDish from './pages/chef/CreateDish';
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
@@ -200,6 +201,10 @@ function AppRoutes() {
         path="/chef/dashboard"
         element={user?.type === 'chef' ? <ChefDashboard /> : <Navigate to="/" replace />}
       />
+	<Route
+	 	path="/chef/dishes/new"
+  		element={user?.type === 'chef' ? <CreateDish /> : <Navigate to="/" replace />}
+	/>
 
       {/* Delivery Routes */}
       <Route

@@ -3,19 +3,23 @@ import { Link } from 'react-router-dom';
 import apiClient from '../../lib/api-client';
 import { Dish } from '../../types/api';
 import { DishGrid } from '../../components';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ChefDashboard() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchChefDishes();
-  }, []);
+const { user } = useAuth();
+
+useEffect(() => {
+  if (user) fetchChefDishes();
+}, [user]);
 
   const fetchChefDishes = async () => {
+  if (!user) return;
     try {
-      // Fetch user's own dishes - would need chef_id filter
-      const response = await apiClient.get('/dishes?per_page=50');
+      // Fetch user's own dishes - has chef_id filter
+      const response = await apiClient.get(`/dishes?per_page=50&chef_id=${user.ID}`);
       setDishes(response.data.dishes);
     } catch (err) {
       console.error('Failed to fetch dishes:', err);

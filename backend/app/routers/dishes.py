@@ -13,6 +13,13 @@ import logging
 from typing import Optional, Literal
 from decimal import Decimal
 
+
+from fastapi import File, UploadFile, Form
+import shutil
+import time
+import os
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func, desc, asc
 from sqlalchemy.orm import Session, joinedload
@@ -129,13 +136,18 @@ async def get_dish(
 
 @router.post("", response_model=DishResponse, status_code=status.HTTP_201_CREATED)
 async def create_dish(
-    dish_data: DishCreateRequest,
+    dish_data: str = Form(...),                 # ⬅ CHANGED
+    image: UploadFile | None = File(None),
     current_user: Account = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a new dish (chef-only).
     """
+
+    # Convert JSON string from FormData → Pydantic model
+    dish_data = DishCreateRequest(**json.loads(dish_data))   # ⬅ ADDED
+
     # Validate name - prevent XSS
     name = dish_data.name.strip()
     if not name:
@@ -159,19 +171,36 @@ async def create_dish(
     # Get restaurant_id (use first restaurant if not assigned)
     restaurant_id = current_user.restaurantID
     if not restaurant_id:
-        # Use default restaurant (ID 1)
         restaurant_id = 1
-    
+        
+    # Handle image upload
+    image_path = None
+    if image:
+        filename = f"{int(time.time())}_{image.filename}"
+        save_path = os.path.join("static", filename)
+
+        # Ensure folder exists
+        os.makedirs("static", exist_ok=True)
+
+        # Save file
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+
+        # URL path returned to frontend
+        image_path = f"/static/{filename}"
+
     # Create dish
     dish = Dish(
         restaurantID=restaurant_id,
         chefID=current_user.ID,
         name=name,
         description=dish_data.description,
-        cost=dish_data.cost,
+        cost=dish_data.cost,   # already in cents
+        picture=image_path,
         average_rating=Decimal("0.00"),
         reviews=0
     )
+
     db.add(dish)
     db.commit()
     db.refresh(dish)
