@@ -107,8 +107,8 @@ export default function LoginPage() {
               <p className="text-sm text-gray-700 font-semibold mb-2">Test Accounts:</p>
               <div className="text-xs text-left space-y-1 text-gray-600">
                 <p>• Manager: manager@dashxbistro.com / password123</p>
-                <p>• Chef: chef.sarah@dashxbistro.com / password123</p>
-                <p>• Delivery: delivery.mike@example.com / password123</p>
+                <p>• Chef: chef.julia@dashxbistro.com / password123</p>
+                <p>• Delivery: delivery.mike@dashxbistro.com / password123</p>
                 <p>• Customer: customer.jane@example.com / password123</p>
               </div>
             </div>
