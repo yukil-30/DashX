@@ -214,48 +214,38 @@ async def create_dish(
 @router.put("/{dish_id}", response_model=DishResponse)
 async def update_dish(
     dish_id: int,
-    update_data: DishUpdateRequest,
+    dish_data: str = Form(...),
+    image: UploadFile | None = File(None),
     current_user: Account = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Update a dish (chef-only).
-    
-    Only the chef who created the dish or a manager can update it.
-    """
     dish = db.query(Dish).filter(Dish.id == dish_id).first()
     if not dish:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dish not found"
-        )
-    
-    # Check permission
-    if current_user.type == "manager":
-        pass  # Managers can update any dish
-    elif current_user.type == "chef":
-        if dish.chefID != current_user.ID:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only update your own dishes"
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only chefs and managers can update dishes"
-        )
-    
-    # Update fields
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+    # Permission check
+    if current_user.type not in ["manager", "chef"] or (current_user.type == "chef" and dish.chefID != current_user.ID):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Parse JSON
+    update_data = DishUpdateRequest(**json.loads(dish_data))
     update_dict = update_data.model_dump(exclude_unset=True)
-    
+
+    # Handle optional image
+    if image:
+        filename = f"{int(time.time())}_{image.filename}"
+        save_path = os.path.join("static", filename)
+        os.makedirs("static", exist_ok=True)
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+        update_dict["picture"] = f"/static/{filename}"
+
+    # Apply updates
     for field, value in update_dict.items():
         setattr(dish, field, value)
-    
+
     db.commit()
     db.refresh(dish)
-    
-    logger.info(f"Dish updated: {dish.id} by user {current_user.ID}")
-    
     return dish_to_response(dish)
 
 

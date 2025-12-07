@@ -15,6 +15,7 @@ import ChatPage from './pages/ChatPage'
 import ImageSearchPage from './pages/ImageSearchPage'
 import ChefDashboard from './pages/chef/ChefDashboard'
 import CreateDish from './pages/chef/CreateDish';
+import ModifyDish from "./pages/chef/ModifyDish";
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
@@ -204,6 +205,10 @@ function AppRoutes() {
 	<Route
 	 	path="/chef/dishes/new"
   		element={user?.type === 'chef' ? <CreateDish /> : <Navigate to="/" replace />}
+	/>
+	<Route
+	 	path="/chef/dishes/:dishId/edit"
+  		element={user?.type === 'chef' ? <ModifyDish /> : <Navigate to="/" replace />}
 	/>
 
       {/* Delivery Routes */}

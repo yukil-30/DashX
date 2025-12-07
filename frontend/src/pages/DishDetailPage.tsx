@@ -34,6 +34,30 @@ export default function DishDetailPage() {
     }
   };
 
+    const handleDeleteDish = async (dishId: number) => {
+      if (!confirm("Are you sure you want to delete this dish?")) return;
+
+      try {
+        const response = await apiClient.delete(`/dishes/${dishId}`, {
+          headers: {
+            Authorization: `Bearer ${user?.token}`
+          }
+        });
+
+        if (response.status === 204) {
+          alert("Dish deleted successfully!");
+          navigate("/dishes"); // go back to menu after deletion
+        } else {
+          const data = await response.data;
+          alert(`Error: ${data.detail}`);
+        }
+      } catch (err: any) {
+        console.error(err);
+        alert("Failed to delete dish.");
+      }
+    };
+
+
   const handleAddToCart = () => {
     if (dish) {
       addToCart(dish, quantity);
@@ -157,7 +181,22 @@ export default function DishDetailPage() {
               </p>
             </div>
           )}
-
+      {user && (user.type === 'manager' || user.ID === dish.chefID) && (
+	<div className="flex items-center gap-4 mt-4">
+    	<Link
+      	to={`/chef/dishes/${dish.id}/edit`}
+      	className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-4"
+    	>
+     	 Edit Dish
+   	 </Link>
+        <button
+        onClick={() => handleDeleteDish(dish.id)}
+        className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mt-4"
+        >
+        Delete Dish
+        </button>
+	</div>
+      )}
           {/* Chef Info */}
           {dish.chefID && (
             <div className="border-t pt-6">
@@ -167,6 +206,7 @@ export default function DishDetailPage() {
           )}
         </div>
       </div>
+
 
       {/* Reviews Section - Placeholder for future implementation */}
       <div className="mt-16 border-t pt-12">
