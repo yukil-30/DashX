@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import apiClient from '../lib/api-client';
-import { Dish } from '../types/api';
+import { Dish, DishReview } from '../types/api';
 import { ImageCarousel, RatingStars } from '../components';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
+import toast from 'react-hot-toast';
+
+interface DishReviewListResponse {
+  reviews: DishReview[];
+  total: number;
+  average_rating: number;
+}
 
 export default function DishDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +19,9 @@ export default function DishDetailPage() {
   const { user } = useAuth();
   const { addToCart } = useCart();
   const [dish, setDish] = useState<Dish | null>(null);
+  const [reviews, setReviews] = useState<DishReview[]>([]);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -19,6 +29,7 @@ export default function DishDetailPage() {
   useEffect(() => {
     if (id) {
       fetchDish();
+      fetchReviews();
     }
   }, [id]);
 
@@ -34,35 +45,23 @@ export default function DishDetailPage() {
     }
   };
 
-    const handleDeleteDish = async (dishId: number) => {
-      if (!confirm("Are you sure you want to delete this dish?")) return;
-
-      try {
-        const response = await apiClient.delete(`/dishes/${dishId}`, {
-          headers: {
-            Authorization: `Bearer ${user?.token}`
-          }
-        });
-
-        if (response.status === 204) {
-          alert("Dish deleted successfully!");
-          navigate("/dishes"); // go back to menu after deletion
-        } else {
-          const data = await response.data;
-          alert(`Error: ${data.detail}`);
-        }
-      } catch (err: any) {
-        console.error(err);
-        alert("Failed to delete dish.");
-      }
-    };
-
+  const fetchReviews = async () => {
+    setReviewsLoading(true);
+    try {
+      const response = await apiClient.get<DishReviewListResponse>(`/reviews/dish/${id}`);
+      setReviews(response.data.reviews);
+      setReviewsTotal(response.data.total);
+    } catch (err: any) {
+      console.error('Failed to load reviews:', err);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
 
   const handleAddToCart = () => {
     if (dish) {
       addToCart(dish, quantity);
-      // Show success message or navigate to cart
-      alert(`Added ${quantity} ${dish.name} to cart!`);
+      toast.success(`Added ${quantity} ${dish.name} to cart!`);
     }
   };
 
@@ -181,22 +180,7 @@ export default function DishDetailPage() {
               </p>
             </div>
           )}
-      {user && (user.type === 'manager' || user.ID === dish.chefID) && (
-	<div className="flex items-center gap-4 mt-4">
-    	<Link
-      	to={`/chef/dishes/${dish.id}/edit`}
-      	className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-4"
-    	>
-     	 Edit Dish
-   	 </Link>
-        <button
-        onClick={() => handleDeleteDish(dish.id)}
-        className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mt-4"
-        >
-        Delete Dish
-        </button>
-	</div>
-      )}
+
           {/* Chef Info */}
           {dish.chefID && (
             <div className="border-t pt-6">
@@ -207,13 +191,47 @@ export default function DishDetailPage() {
         </div>
       </div>
 
-
-      {/* Reviews Section - Placeholder for future implementation */}
+      {/* Reviews Section */}
       <div className="mt-16 border-t pt-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8">Customer Reviews</h2>
-        <div className="text-center py-8 text-gray-500">
-          Reviews feature coming soon...
-        </div>
+        <h2 className="text-3xl font-bold text-gray-900 mb-8">
+          Customer Reviews ({reviewsTotal})
+        </h2>
+        
+        {reviewsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          </div>
+        ) : reviews.length === 0 ? (
+          <div className="text-center py-8 bg-gray-50 rounded-xl">
+            <p className="text-gray-500 text-lg mb-2">No reviews yet</p>
+            <p className="text-gray-400">Be the first to review this dish after ordering!</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {reviews.map((review) => (
+              <div key={review.id} className="bg-white rounded-xl shadow-md p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {review.reviewer_email || 'Anonymous'}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(review.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                  <RatingStars rating={review.rating} size="md" />
+                </div>
+                {review.review_text && (
+                  <p className="text-gray-700">{review.review_text}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
