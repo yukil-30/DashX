@@ -41,6 +41,9 @@ class Account(Base):
     wage = Column(Integer, nullable=True)  # Hourly wage in cents for employees
     free_delivery_credits = Column(Integer, nullable=False, default=0)  # Free delivery credits for VIP
     completed_orders_count = Column(Integer, nullable=False, default=0)  # Track orders for VIP free delivery
+    total_spent_cents = Column(Integer, nullable=False, default=0)  # Track total spending for VIP eligibility
+    unresolved_complaints_count = Column(Integer, nullable=False, default=0)  # Track unresolved complaints
+    is_vip = Column(Boolean, nullable=False, default=False)  # VIP status flag
     
     # Chef/employee tracking
     times_demoted = Column(Integer, nullable=False, default=0)
@@ -407,3 +410,120 @@ class VoiceReport(Base):
     related_account = relationship("Account", foreign_keys=[related_account_id])
     related_order = relationship("Order", foreign_keys=[related_order_id])
     resolver = relationship("Account", foreign_keys=[resolved_by])
+
+
+class DishReview(Base):
+    """Customer reviews for dishes (linked to orders)"""
+    __tablename__ = "dish_reviews"
+
+    id = Column(Integer, primary_key=True)
+    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    rating = Column(Integer, nullable=False)  # 1-5 stars
+    review_text = Column(Text, nullable=True)
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+    updated_at = Column(Text, nullable=True)  # ISO timestamp
+
+    __table_args__ = (
+        CheckConstraint('rating >= 1 AND rating <= 5', name='check_dish_review_rating'),
+    )
+
+    # Relationships
+    dish = relationship("Dish", backref="dish_reviews")
+    account = relationship("Account", backref="dish_reviews")
+    order = relationship("Order", backref="dish_reviews")
+
+
+class OrderDeliveryReview(Base):
+    """Customer reviews for delivery on specific orders"""
+    __tablename__ = "order_delivery_reviews"
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, unique=True)
+    delivery_person_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    rating = Column(Integer, nullable=False)  # 1-5 stars
+    review_text = Column(Text, nullable=True)
+    on_time = Column(Boolean, nullable=True)  # Was delivery on time?
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    __table_args__ = (
+        CheckConstraint('rating >= 1 AND rating <= 5', name='check_delivery_review_rating'),
+    )
+
+    # Relationships
+    order = relationship("Order", backref="delivery_review")
+    delivery_person = relationship("Account", foreign_keys=[delivery_person_id], backref="delivery_reviews_received")
+    reviewer = relationship("Account", foreign_keys=[reviewer_id], backref="delivery_reviews_given")
+
+
+class VIPHistory(Base):
+    """Track VIP status changes"""
+    __tablename__ = "vip_history"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    previous_type = Column(String(50), nullable=False)
+    new_type = Column(String(50), nullable=False)
+    reason = Column(Text, nullable=True)  # e.g., "spent > $100", "3 orders completed"
+    changed_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)  # NULL = automatic
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    # Relationships
+    account = relationship("Account", foreign_keys=[account_id], backref="vip_history")
+    changed_by_account = relationship("Account", foreign_keys=[changed_by])
+
+
+class AccountProfile(Base):
+    """Extended profile information for accounts"""
+    __tablename__ = "account_profiles"
+
+    account_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), primary_key=True)
+    display_name = Column(String(100), nullable=True)
+    bio = Column(Text, nullable=True)
+    profile_picture = Column(Text, nullable=True)  # URL/path to image
+    phone = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
+    specialty = Column(String(255), nullable=True)  # For chefs - their specialty
+    created_at = Column(Text, nullable=True)
+    updated_at = Column(Text, nullable=True)
+
+    # Relationships
+    account = relationship("Account", backref="profile", uselist=False)
+
+
+class ForumThread(Base):
+    """Discussion forum threads"""
+    __tablename__ = "forum_threads"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False)
+    topic_type = Column(String(50), nullable=False)  # 'dish', 'chef', 'delivery', 'general'
+    topic_id = Column(Integer, nullable=True)  # ID of dish/chef/delivery if applicable
+    author_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    is_pinned = Column(Boolean, nullable=False, default=False)
+    is_locked = Column(Boolean, nullable=False, default=False)
+    created_at = Column(Text, nullable=False)
+    updated_at = Column(Text, nullable=True)
+
+    # Relationships
+    author = relationship("Account", backref="forum_threads")
+    posts = relationship("ForumPost", back_populates="thread", cascade="all, delete-orphan")
+
+
+class ForumPost(Base):
+    """Posts within forum threads"""
+    __tablename__ = "forum_posts"
+
+    id = Column(Integer, primary_key=True)
+    thread_id = Column(Integer, ForeignKey("forum_threads.id", ondelete="CASCADE"), nullable=False)
+    author_id = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    content = Column(Text, nullable=False)
+    is_deleted = Column(Boolean, nullable=False, default=False)
+    created_at = Column(Text, nullable=False)
+    updated_at = Column(Text, nullable=True)
+
+    # Relationships
+    thread = relationship("ForumThread", back_populates="posts")
+    author = relationship("Account", backref="forum_posts")

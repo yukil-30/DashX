@@ -54,19 +54,42 @@ def test_image_green() -> bytes:
     return buf.getvalue()
 
 
+from unittest.mock import MagicMock
+
+
 @pytest.fixture
 def authenticated_client() -> TestClient:
-    """Create authenticated test client"""
-    from app.auth import create_access_token
+    """Create authenticated test client with mocked DB"""
+    from app.auth import create_access_token, get_current_user
+    
+    # Create mock user
+    mock_user = MagicMock()
+    mock_user.ID = 1
+    mock_user.email = "test@example.com"
+    mock_user.type = "customer"
+    mock_user.warnings = 0
+    
+    # Create mock db
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+    mock_db.query.return_value.all.return_value = []
+    
+    # Set up dependency overrides
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: mock_user
     
     # Create token for test user
-    token = create_access_token(data={"sub": "test@example.com"})
+    token = create_access_token(data={"sub": "test@example.com", "user_id": 1})
     
     # Create client with auth
     client = TestClient(app)
     client.headers = {"Authorization": f"Bearer {token}"}
     
-    return client
+    yield client
+    
+    # Clean up overrides
+    app.dependency_overrides.clear()
 
 
 class TestImageFeatureExtraction:

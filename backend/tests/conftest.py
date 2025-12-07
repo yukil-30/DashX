@@ -1,4 +1,9 @@
 import os
+
+# Disable background tasks during testing to avoid PostgreSQL connection attempts
+os.environ["ENABLE_BACKGROUND_TASKS"] = "false"
+os.environ["TESTING"] = "true"
+
 import pytest
 from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import sessionmaker
@@ -6,7 +11,12 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.database import Base, get_db
-from app.models import Account
+from app.models import (
+    Account, Restaurant, Dish, Order, OrderedDish, Bid, 
+    Transaction, Complaint, AuditLog, Post, DeliveryRating,
+    DishReview, OrderDeliveryReview, VIPHistory, AccountProfile,
+    ForumThread, ForumPost
+)
 
 # Test database setup
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test_db.db"
@@ -78,7 +88,10 @@ def customer_user(db_session):
         password="hashed_password",
         type="customer",
         balance=10000,
-        warnings=0
+        warnings=0,
+        total_spent_cents=0,
+        unresolved_complaints_count=0,
+        is_vip=False
     )
     db_session.add(user)
     db_session.commit()
@@ -104,7 +117,10 @@ def manager_user(db_session, restaurant):
         type="manager",
         balance=0,
         warnings=0,
-        restaurantID=restaurant.id
+        restaurantID=restaurant.id,
+        total_spent_cents=0,
+        unresolved_complaints_count=0,
+        is_vip=False
     )
     db_session.add(user)
     db_session.commit()
@@ -121,7 +137,10 @@ def chef_user(db_session, restaurant):
         type="chef",
         balance=0,
         warnings=0,
-        restaurantID=restaurant.id
+        restaurantID=restaurant.id,
+        total_spent_cents=0,
+        unresolved_complaints_count=0,
+        is_vip=False
     )
     db_session.add(user)
     db_session.commit()
@@ -137,7 +156,10 @@ def delivery_user(db_session):
         password="hashed_password",
         type="delivery",
         balance=5000,
-        warnings=0
+        warnings=0,
+        total_spent_cents=0,
+        unresolved_complaints_count=0,
+        is_vip=False
     )
     db_session.add(user)
     db_session.commit()
@@ -179,7 +201,10 @@ def seed_db(db_session):
             type=acc[3],
             warnings=acc[4],
             balance=1000,
-            free_delivery_credits=acc[5]
+            free_delivery_credits=acc[5],
+            total_spent_cents=0,
+            unresolved_complaints_count=0,
+            is_vip=(acc[3] == 'vip')
         )
         db_session.add(account)
     db_session.flush()

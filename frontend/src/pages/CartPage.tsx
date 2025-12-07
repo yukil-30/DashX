@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../lib/api-client';
-import { CreateOrderRequest } from '../types/api';
+import { CreateOrderRequest, CustomerDashboardResponse } from '../types/api';
+
+interface VIPInfo {
+  is_vip: boolean;
+  discount_percent: number;
+  free_deliveries_remaining: number;
+}
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -13,6 +19,34 @@ export default function CartPage() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [vipInfo, setVipInfo] = useState<VIPInfo | null>(null);
+  const [loadingVip, setLoadingVip] = useState(true);
+
+  // Fetch VIP status
+  useEffect(() => {
+    const fetchVipStatus = async () => {
+      if (!user || user.type !== 'customer') {
+        setLoadingVip(false);
+        return;
+      }
+      
+      try {
+        const response = await apiClient.get<CustomerDashboardResponse>('/customer/dashboard');
+        setVipInfo({
+          is_vip: response.data.vip_status?.is_vip || false,
+          discount_percent: response.data.vip_status?.discount_percent || 0,
+          free_deliveries_remaining: response.data.vip_status?.free_delivery_credits || 0,
+        });
+      } catch (err) {
+        console.error('Failed to fetch VIP status:', err);
+        setVipInfo({ is_vip: false, discount_percent: 0, free_deliveries_remaining: 0 });
+      } finally {
+        setLoadingVip(false);
+      }
+    };
+
+    fetchVipStatus();
+  }, [user]);
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +118,13 @@ export default function CartPage() {
   }
 
   const deliveryFee = 500; // $5 in cents
-  const total = totalCost + deliveryFee;
+  
+  // Calculate VIP discounts
+  const discountPercent = vipInfo?.is_vip ? (vipInfo.discount_percent || 5) : 0;
+  const discountAmount = Math.floor(totalCost * discountPercent / 100);
+  const freeDelivery = vipInfo?.is_vip && (vipInfo.free_deliveries_remaining || 0) > 0;
+  const actualDeliveryFee = freeDelivery ? 0 : deliveryFee;
+  const total = totalCost - discountAmount + actualDeliveryFee;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -167,6 +207,19 @@ export default function CartPage() {
           <div className="bg-white rounded-lg shadow-md p-6 sticky top-4">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Order Summary</h2>
 
+            {/* VIP Badge */}
+            {vipInfo?.is_vip && (
+              <div className="mb-4 bg-gradient-to-r from-amber-100 to-yellow-100 border border-amber-300 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">👑</span>
+                  <span className="font-semibold text-amber-800">VIP Member</span>
+                </div>
+                <p className="text-sm text-amber-700 mt-1">
+                  {discountPercent}% discount applied • {freeDelivery ? '1 free delivery used' : `${vipInfo.free_deliveries_remaining} free deliveries available`}
+                </p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmitOrder}>
               {/* Delivery Address */}
               <div className="mb-6">
@@ -193,9 +246,25 @@ export default function CartPage() {
                   <span>Subtotal</span>
                   <span>${(totalCost / 100).toFixed(2)}</span>
                 </div>
+                
+                {/* VIP Discount */}
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>VIP Discount ({discountPercent}%)</span>
+                    <span>-${(discountAmount / 100).toFixed(2)}</span>
+                  </div>
+                )}
+                
                 <div className="flex justify-between text-gray-700">
                   <span>Delivery Fee</span>
-                  <span>${(deliveryFee / 100).toFixed(2)}</span>
+                  {freeDelivery ? (
+                    <span className="text-green-600">
+                      <span className="line-through text-gray-400 mr-2">${(deliveryFee / 100).toFixed(2)}</span>
+                      FREE
+                    </span>
+                  ) : (
+                    <span>${(deliveryFee / 100).toFixed(2)}</span>
+                  )}
                 </div>
               </div>
 

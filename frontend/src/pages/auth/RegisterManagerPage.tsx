@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../lib/api-client';
 
-export default function RegisterPage() {
+export default function RegisterManagerPage() {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [type, setType] = useState<'customer' | 'visitor'>('customer');
+  const [restaurantName, setRestaurantName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -18,6 +18,11 @@ export default function RegisterPage() {
     setError('');
 
     // Validation
+    if (!restaurantName.trim()) {
+      setError('Restaurant name is required');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -41,9 +46,17 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await register({ email, password, type });
-      toast.success('Account created successfully! Welcome to DashX!');
-      navigate('/');
+      const response = await apiClient.post('/auth/register-manager', {
+        email,
+        password,
+        restaurant_name: restaurantName.trim(),
+      });
+
+      // Auto-login with the returned token
+      localStorage.setItem('token', response.data.access_token);
+      toast.success('Restaurant and manager account created! Welcome to DashX!');
+      navigate('/manager/orders');
+      window.location.reload(); // Refresh to update auth state
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
@@ -56,9 +69,12 @@ export default function RegisterPage() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
+            Create a Restaurant
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
+            Register as a manager with a new restaurant
+          </p>
+          <p className="mt-2 text-center text-sm text-gray-500">
             Already have an account?{' '}
             <Link to="/auth/login" className="font-medium text-primary-600 hover:text-primary-500">
               Sign in
@@ -82,8 +98,24 @@ export default function RegisterPage() {
 
           <div className="space-y-4">
             <div>
+              <label htmlFor="restaurantName" className="block text-sm font-medium text-gray-700 mb-1">
+                Restaurant Name
+              </label>
+              <input
+                id="restaurantName"
+                name="restaurantName"
+                type="text"
+                required
+                value={restaurantName}
+                onChange={(e) => setRestaurantName(e.target.value)}
+                className="input-field"
+                placeholder="Your Restaurant Name"
+              />
+            </div>
+
+            <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email address
+                Manager Email
               </label>
               <input
                 id="email"
@@ -94,7 +126,7 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input-field"
-                placeholder="Email address"
+                placeholder="manager@restaurant.com"
               />
             </div>
 
@@ -111,7 +143,7 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input-field"
-                placeholder="Password (min 8 chars, 1 digit, 1 letter)"
+                placeholder="At least 8 characters"
               />
             </div>
 
@@ -128,27 +160,8 @@ export default function RegisterPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="input-field"
-                placeholder="Confirm password"
+                placeholder="Confirm your password"
               />
-            </div>
-
-            <div>
-              <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">
-                Account Type
-              </label>
-              <select
-                id="type"
-                name="type"
-                value={type}
-                onChange={(e) => setType(e.target.value as 'customer' | 'visitor')}
-                className="input-field"
-              >
-                <option value="customer">Customer</option>
-                <option value="visitor">Visitor</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Customers can order food. Visitors can only browse.
-              </p>
             </div>
           </div>
 
@@ -156,17 +169,17 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full text-lg py-3"
+              className="btn-primary w-full py-3"
             >
-              {loading ? 'Creating account...' : 'Create account'}
+              {loading ? 'Creating Restaurant...' : 'Create Restaurant & Account'}
             </button>
           </div>
 
           <div className="text-center text-sm text-gray-500">
             <p>
-              Want to open a restaurant?{' '}
-              <Link to="/auth/register-manager" className="text-primary-600 hover:text-primary-500">
-                Register as a manager
+              Want to order food instead?{' '}
+              <Link to="/auth/register" className="text-primary-600 hover:text-primary-500">
+                Register as a customer
               </Link>
             </p>
           </div>

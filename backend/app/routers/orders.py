@@ -283,6 +283,9 @@ async def create_order(
         if free_delivery_used:
             current_user.free_delivery_credits -= 1
         
+        # Track total spending for VIP eligibility
+        current_user.total_spent_cents = (current_user.total_spent_cents or 0) + final_cost
+        
         # Increment completed orders count for VIP
         # (We count 'paid' orders towards free delivery credits)
         if is_vip:
@@ -290,6 +293,9 @@ async def create_order(
             # Check if VIP earns a new free delivery credit
             if current_user.completed_orders_count % VIP_FREE_DELIVERY_EVERY_N_ORDERS == 0:
                 current_user.free_delivery_credits += 1
+        else:
+            # Also track for non-VIP customers for upgrade eligibility
+            current_user.completed_orders_count += 1
         
         db.commit()
         db.refresh(order)
@@ -637,3 +643,101 @@ async def assign_delivery(
         is_lowest_bid=is_lowest_bid,
         memo_saved=memo_saved
     )
+
+
+@router.get("/history/me")
+async def get_order_history(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(get_current_user)
+):
+    """
+    Get order history for the current user with detailed info for reviews.
+    """
+    from app.models import DishReview, OrderDeliveryReview
+    
+    query = db.query(Order).filter(
+        Order.accountID == current_user.ID
+    ).options(
+        joinedload(Order.ordered_dishes).joinedload(OrderedDish.dish)
+    )
+    
+    if status_filter:
+        query = query.filter(Order.status == status_filter)
+    
+    total = query.count()
+    offset = (page - 1) * per_page
+    
+    orders = query.order_by(Order.id.desc()).offset(offset).limit(per_page).all()
+    
+    result = []
+    for order in orders:
+        # Check if delivery can be reviewed
+        has_delivery = order.bidID is not None
+        delivery_reviewed = False
+        delivery_person_id = None
+        delivery_person_email = None
+        
+        if has_delivery:
+            bid = db.query(Bid).filter(Bid.id == order.bidID).first()
+            if bid:
+                delivery_person_id = bid.deliveryPersonID
+                dp = db.query(Account).filter(Account.ID == delivery_person_id).first()
+                if dp:
+                    delivery_person_email = dp.email
+                
+                # Check if already reviewed
+                existing_review = db.query(OrderDeliveryReview).filter(
+                    OrderDeliveryReview.order_id == order.id
+                ).first()
+                delivery_reviewed = existing_review is not None
+        
+        # Build items with review status
+        items = []
+        for od in order.ordered_dishes:
+            dish_reviewed = db.query(DishReview).filter(
+                DishReview.dish_id == od.DishID,
+                DishReview.order_id == order.id,
+                DishReview.account_id == current_user.ID
+            ).first() is not None
+            
+            items.append({
+                "dish_id": od.DishID,
+                "dish_name": od.dish.name if od.dish else "Unknown",
+                "dish_picture": od.dish.picture if od.dish else None,
+                "quantity": od.quantity,
+                "unit_price_cents": od.dish.cost if od.dish else 0,
+                "can_review": order.status == 'delivered',
+                "has_reviewed": dish_reviewed
+            })
+        
+        result.append({
+            "id": order.id,
+            "status": order.status,
+            "created_at": order.dateTime or "",
+            "delivered_at": None,  # Would need to track this
+            "subtotal_cents": order.subtotal_cents,
+            "delivery_fee_cents": order.delivery_fee,
+            "discount_cents": order.discount_cents,
+            "total_cents": order.finalCost,
+            "total_formatted": f"${order.finalCost / 100:.2f}",
+            "delivery_address": order.delivery_address or "",
+            "note": order.note,
+            "items": items,
+            "delivery_person_id": delivery_person_id,
+            "delivery_person_email": delivery_person_email,
+            "can_review_delivery": order.status == 'delivered' and has_delivery and not delivery_reviewed,
+            "has_reviewed_delivery": delivery_reviewed,
+            "free_delivery_used": order.free_delivery_used == 1,
+            "vip_discount_applied": order.discount_cents > 0
+        })
+    
+    return {
+        "orders": result,
+        "total": total,
+        "page": page,
+        "per_page": per_page
+    }
+

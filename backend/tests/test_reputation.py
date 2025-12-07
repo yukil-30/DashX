@@ -825,7 +825,7 @@ class TestEdgeCases:
     """Test edge cases and boundary conditions"""
 
     def test_complaint_about_self(self):
-        """Test that user can file complaint about themselves (allowed by current rules)"""
+        """Test that user cannot file complaint about themselves"""
         mock_user = create_mock_user(ID=1)
         mock_db = create_mock_db()
         
@@ -846,8 +846,8 @@ class TestEdgeCases:
                 "text": "Complaining about myself"
             })
             
-            # This is allowed by current implementation
-            assert response.status_code in [201, 500]
+            # Self-complaints are rejected with 400 Bad Request
+            assert response.status_code == 400
         finally:
             app.dependency_overrides.clear()
 

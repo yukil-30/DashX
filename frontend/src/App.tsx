@@ -8,6 +8,7 @@ import { WarningsBanner } from './components'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import RegisterManagerPage from './pages/auth/RegisterManagerPage'
 import DishesPage from './pages/DishesPage'
 import DishDetailPage from './pages/DishDetailPage'
 import CartPage from './pages/CartPage'
@@ -20,6 +21,15 @@ import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
 import { ManagerComplaints } from './pages/manager/ManagerComplaints'
+
+// Customer Feature Pages
+import CustomerDashboard from './pages/customer/CustomerDashboard'
+import OrderHistoryPage from './pages/customer/OrderHistoryPage'
+import TransactionsPage from './pages/customer/TransactionsPage'
+import ForumPage from './pages/ForumPage'
+import ThreadDetailPage from './pages/ThreadDetailPage'
+import ChefsListPage from './pages/ChefsListPage'
+import ChefProfilePage from './pages/ChefProfilePage'
 
 function Navigation() {
   const { user, logout, warningInfo, dismissWarning } = useAuth();
@@ -73,6 +83,30 @@ function Navigation() {
                 Dashboard
               </Link>
             )}
+
+            {/* Customer Navigation */}
+            {user?.type === 'customer' && (
+              <>
+                <Link to="/customer/dashboard" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+                  <span className="hidden sm:inline">My Dashboard</span>
+                  <span className="sm:hidden text-xl">📊</span>
+                </Link>
+                <Link to="/customer/orders" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+                  <span className="hidden sm:inline">My Orders</span>
+                  <span className="sm:hidden text-xl">📋</span>
+                </Link>
+              </>
+            )}
+
+            {/* Public Links */}
+            <Link to="/chefs" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+              <span className="hidden sm:inline">Chefs</span>
+              <span className="sm:hidden text-xl">👨‍🍳</span>
+            </Link>
+            <Link to="/forum" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+              <span className="hidden sm:inline">Forum</span>
+              <span className="sm:hidden text-xl">💭</span>
+            </Link>
 
             {/* Cart (customers only) */}
             {user?.type === 'customer' && (
@@ -156,6 +190,10 @@ function AppRoutes() {
         path="/auth/register"
         element={user ? <Navigate to="/" replace /> : <RegisterPage />}
       />
+      <Route
+        path="/auth/register-manager"
+        element={user ? <Navigate to="/" replace /> : <RegisterManagerPage />}
+      />
 
       {/* Customer Routes */}
       <Route
@@ -164,6 +202,30 @@ function AppRoutes() {
           user?.type === 'customer' ? <CartPage /> : <Navigate to="/auth/login" replace />
         }
       />
+      <Route
+        path="/customer/dashboard"
+        element={
+          user?.type === 'customer' ? <CustomerDashboard /> : <Navigate to="/auth/login" replace />
+        }
+      />
+      <Route
+        path="/customer/orders"
+        element={
+          user?.type === 'customer' ? <OrderHistoryPage /> : <Navigate to="/auth/login" replace />
+        }
+      />
+      <Route
+        path="/customer/transactions"
+        element={
+          user?.type === 'customer' ? <TransactionsPage /> : <Navigate to="/auth/login" replace />
+        }
+      />
+
+      {/* Public Profile Routes */}
+      <Route path="/chefs" element={<ChefsListPage />} />
+      <Route path="/chefs/:id" element={<ChefProfilePage />} />
+      <Route path="/forum" element={<ForumPage />} />
+      <Route path="/forum/:threadId" element={<ThreadDetailPage />} />
 
       {/* Manager Routes */}
       <Route

@@ -72,15 +72,15 @@ class TestUniqueConstraints:
         """Email must be unique across accounts."""
         # Insert first account
         transaction_session.execute(text("""
-            INSERT INTO accounts (email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted)
-            VALUES ('unique_test@example.com', 'hash123', 'customer', 0, 0, 0, 0, 0, 0, 0)
+            INSERT INTO accounts (email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted, total_spent_cents, unresolved_complaints_count, is_vip)
+            VALUES ('unique_test@example.com', 'hash123', 'customer', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         """))
         
         # Try to insert second account with same email
         with pytest.raises(IntegrityError):
             transaction_session.execute(text("""
-                INSERT INTO accounts (email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted)
-                VALUES ('unique_test@example.com', 'hash456', 'delivery', 0, 0, 0, 0, 0, 0, 0)
+                INSERT INTO accounts (email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted, total_spent_cents, unresolved_complaints_count, is_vip)
+                VALUES ('unique_test@example.com', 'hash456', 'delivery', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
             """))
 
 
@@ -185,8 +185,8 @@ class TestCheckConstraints:
             ON CONFLICT (id) DO NOTHING
         """))
         transaction_session.execute(text("""
-            INSERT INTO accounts ("ID", email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted)
-            VALUES (9996, 'qty_test@test.com', 'hash', 'customer', 0, 0, 0, 0, 0, 0, 0)
+            INSERT INTO accounts ("ID", email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted, total_spent_cents, unresolved_complaints_count, is_vip)
+            VALUES (9996, 'qty_test@test.com', 'hash', 'customer', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
             ON CONFLICT ("ID") DO NOTHING
         """))
         transaction_session.execute(text("""
@@ -322,10 +322,10 @@ class TestComplaintFlow:
         """Test inserting a complaint."""
         # Setup accounts
         transaction_session.execute(text("""
-            INSERT INTO accounts ("ID", email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted)
+            INSERT INTO accounts ("ID", email, password, type, warnings, balance, free_delivery_credits, completed_orders_count, times_demoted, is_fired, is_blacklisted, total_spent_cents, unresolved_complaints_count, is_vip)
             VALUES
-                (9960, 'complaint_subject@test.com', 'hash', 'delivery', 0, 0, 0, 0, 0, 0, 0),
-                (9961, 'complaint_reporter@test.com', 'hash', 'customer', 0, 0, 0, 0, 0, 0, 0)
+                (9960, 'complaint_subject@test.com', 'hash', 'delivery', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                (9961, 'complaint_reporter@test.com', 'hash', 'customer', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
             ON CONFLICT ("ID") DO NOTHING
         """))
         transaction_session.execute(text("""

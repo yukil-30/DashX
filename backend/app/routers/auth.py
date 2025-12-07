@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import Account, Blacklist
+from app.models import Account, Blacklist, Restaurant
 from app.schemas import (
     UserRegisterRequest, UserLoginRequest, TokenResponse,
-    UserProfile, UserProfileResponse, TokenResponseWithWarnings, LoginWarningInfo
+    UserProfile, UserProfileResponse, TokenResponseWithWarnings, LoginWarningInfo,
+    ManagerRegisterRequest
 )
 from app.auth import (
     hash_password, verify_password, create_access_token,
@@ -68,6 +69,68 @@ async def register(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered"
+        )
+    
+    # Generate access token
+    access_token = create_access_token(
+        data={"sub": new_user.email, "user_id": new_user.ID, "role": new_user.type}
+    )
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+
+@router.post("/register-manager", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def register_manager(
+    request: ManagerRegisterRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Register a new manager account and create a new restaurant.
+    
+    This endpoint creates a new restaurant and assigns the manager to it.
+    Returns a JWT access token upon successful registration.
+    """
+    # Check if email already exists
+    existing_user = db.query(Account).filter(Account.email == request.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered"
+        )
+    
+    try:
+        # Create restaurant first
+        new_restaurant = Restaurant(
+            name=request.restaurant_name.strip()
+        )
+        db.add(new_restaurant)
+        db.flush()  # Get the restaurant ID without committing
+        
+        # Create manager account linked to the restaurant
+        new_user = Account(
+            email=request.email,
+            password=hash_password(request.password),
+            type="manager",
+            balance=0,
+            warnings=0,
+            restaurantID=new_restaurant.id
+        )
+        
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        logger.info(f"New manager registered: {new_user.email} for restaurant: {new_restaurant.name} (ID: {new_restaurant.id})")
+        
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered or restaurant name taken"
         )
     
     # Generate access token

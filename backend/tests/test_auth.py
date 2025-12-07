@@ -175,17 +175,12 @@ class TestRegistration:
         import uuid
         unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         
-        with patch('app.routers.auth.get_db') as mock_get_db:
-            mock_db = MagicMock()
-            mock_db.query.return_value.filter.return_value.first.return_value = None
-            mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
-            
-            # Mock the generator behavior for Depends
-            def db_generator():
-                yield mock_db
-            mock_get_db.return_value = db_generator()
-            
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
             response = client.post("/auth/register", json={
                 "username": unique_email,
                 "password": "SecureP@ss123",
@@ -196,6 +191,8 @@ class TestRegistration:
             
             # Accept either success or conflict (if DB already has user)
             assert response.status_code in [201, 409]
+        finally:
+            app.dependency_overrides.clear()
 
     def test_register_invalid_email(self):
         """Test registration with invalid email format"""
@@ -248,14 +245,12 @@ class TestRegistration:
         import uuid
         unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         
-        with patch('app.routers.auth.get_db') as mock_get_db:
-            mock_db = MagicMock()
-            mock_db.query.return_value.filter.return_value.first.return_value = None
-            
-            def db_generator():
-                yield mock_db
-            mock_get_db.return_value = db_generator()
-            
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
             response = client.post("/auth/register", json={
                 "username": unique_email,
                 "password": "SecureP@ss123",
@@ -270,6 +265,8 @@ class TestRegistration:
                 assert "token_type" in data
                 assert data["token_type"] == "bearer"
                 assert "expires_in" in data
+        finally:
+            app.dependency_overrides.clear()
 
     def test_register_password_not_in_response(self):
         """Security: Ensure password is never echoed in response"""
@@ -277,17 +274,25 @@ class TestRegistration:
         unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         password = "SecureP@ss123"
         
-        response = client.post("/auth/register", json={
-            "username": unique_email,
-            "password": password,
-            "display_name": "Test User",
-            "email": unique_email,
-            "role_requested": "customer"
-        })
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
         
-        # Check password is not in response body
-        response_text = response.text
-        assert password not in response_text
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/auth/register", json={
+                "username": unique_email,
+                "password": password,
+                "display_name": "Test User",
+                "email": unique_email,
+                "role_requested": "customer"
+            })
+            
+            # Check password is not in response body
+            response_text = response.text
+            assert password not in response_text
+        finally:
+            app.dependency_overrides.clear()
 
 
 # ============================================================
@@ -315,15 +320,13 @@ class TestLogin:
 
     def test_login_invalid_credentials(self):
         """Test login with invalid credentials"""
-        with patch('app.routers.auth.get_db') as mock_get_db:
-            mock_db = MagicMock()
-            # User not found
-            mock_db.query.return_value.filter.return_value.first.return_value = None
-            
-            def db_generator():
-                yield mock_db
-            mock_get_db.return_value = db_generator()
-            
+        mock_db = MagicMock()
+        # User not found
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
             response = client.post("/auth/login", json={
                 "email": "nonexistent@example.com",
                 "password": "WrongPassword123"
@@ -332,18 +335,28 @@ class TestLogin:
             assert response.status_code == 401
             data = response.json()
             assert "Invalid credentials" in data.get("detail", "")
+        finally:
+            app.dependency_overrides.clear()
 
     def test_login_password_not_echoed(self):
         """Security: Ensure password is not in error response"""
         password = "MySecretPassword123"
         
-        response = client.post("/auth/login", json={
-            "email": "test@example.com",
-            "password": password
-        })
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
         
-        # Password should never appear in any response
-        assert password not in response.text
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/auth/login", json={
+                "email": "test@example.com",
+                "password": password
+            })
+            
+            # Password should never appear in any response
+            assert password not in response.text
+        finally:
+            app.dependency_overrides.clear()
 
 
 # ============================================================
@@ -381,9 +394,10 @@ class TestGetMe:
         mock_user.restaurantID = None
         mock_user.password = "$2b$12$hashedpassword"
         
-        with patch('app.auth.get_current_user') as mock_get_user:
-            mock_get_user.return_value = mock_user
-            
+        # Use dependency override instead of patch
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        
+        try:
             token = create_access_token(data={"sub": "test@example.com", "user_id": 1})
             response = client.get(
                 "/auth/me",
@@ -394,6 +408,8 @@ class TestGetMe:
             response_text = response.text.lower()
             assert "password" not in response_text or "password\":" not in response_text
             assert "$2b$" not in response_text
+        finally:
+            app.dependency_overrides.clear()
 
 
 # ============================================================
@@ -570,17 +586,17 @@ class TestRoleBasedAccess:
 
     def test_warning_based_denial(self):
         """Test that users with high warnings can be denied access"""
-        mock_user = MagicMock()
-        mock_user.email = "warned@example.com"
-        mock_user.warnings = 3  # High warning count
+        from fastapi import HTTPException
         
-        with patch('app.auth.get_current_user') as mock_get_user:
-            from fastapi import HTTPException
-            mock_get_user.side_effect = HTTPException(
+        def mock_user_with_high_warnings():
+            raise HTTPException(
                 status_code=403,
                 detail="Account has been suspended"
             )
-            
+        
+        app.dependency_overrides[get_current_user] = mock_user_with_high_warnings
+        
+        try:
             token = create_access_token(data={"sub": "warned@example.com"})
             response = client.get(
                 "/auth/me",
@@ -589,6 +605,8 @@ class TestRoleBasedAccess:
             
             # Should be forbidden
             assert response.status_code in [401, 403]
+        finally:
+            app.dependency_overrides.clear()
 
 
 # ============================================================
