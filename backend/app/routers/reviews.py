@@ -53,10 +53,19 @@ async def create_dish_review(
             detail="Order not found"
         )
     
-    if order.status != 'delivered':
+    # if order.status != 'delivered':
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail="Can only review dishes from delivered orders"
+    #     )
+
+    # TEMPORARY: Allow reviews for 'paid' orders during testing
+    # TODO: Change back to only allow 'delivered' orders in production
+    # if order.status != 'delivered':
+    if order.status not in ['paid', 'delivered']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only review dishes from delivered orders"
+            detail="Can only review dishes from paid or delivered orders"
         )
     
     # Verify dish was in the order

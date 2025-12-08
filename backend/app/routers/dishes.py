@@ -30,7 +30,7 @@ from app.schemas import (
     DishCreateRequest, DishUpdateRequest, DishResponse, DishListResponse,
     DishRateRequest, DishRateResponse
 )
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_user_optional
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +64,16 @@ async def list_dishes(
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     q: Optional[str] = Query(None, max_length=100, description="Search query for dish name"),
     chef_id: Optional[int] = Query(None, description="Filter by chef ID"),
-    order_by: Literal["popular", "rating", "cost", "newest"] = Query(
+    order_by: Literal["popular", "rating", "cost", "newest", "past_orders"] = Query(
         "popular", 
-        description="Sort order: popular, rating, cost, newest"
+        description="Sort order: popular, rating, cost, newest, past_orders"
     ),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[Account] = Depends(get_current_user_optional)
 ):
     """
     List dishes with pagination, search, and filtering.
+    Includes 'past_orders' sorting to show dishes the user has previously ordered.
     """
     # Build base query
     query = db.query(Dish).options(
@@ -86,8 +88,61 @@ async def list_dishes(
         search_term = f"%{q}%"
         query = query.filter(Dish.name.ilike(search_term))
     
-    # Apply ordering
-    if order_by == "popular":
+    # Handle "past_orders" sorting
+    if order_by == "past_orders":
+        if not current_user:
+            # User not logged in - return empty list
+            return DishListResponse(
+                dishes=[],
+                total=0,
+                page=page,
+                per_page=per_page,
+                total_pages=0
+            )
+        
+        # Get unique dish IDs from user's past orders (any status)
+        # Include paid, assigned, in_transit, delivered - basically any order that was successfully created
+        past_dish_ids = db.query(OrderedDish.DishID).join(
+            Order, OrderedDish.orderID == Order.id
+        ).filter(
+            Order.accountID == current_user.ID,
+            Order.status.in_(['paid', 'assigned', 'in_transit', 'delivered'])
+        ).distinct().all()
+        
+        # Extract IDs from query result
+        dish_id_list = [dish_id[0] for dish_id in past_dish_ids]
+        
+        if not dish_id_list:
+            # User has no past orders - return empty list
+            return DishListResponse(
+                dishes=[],
+                total=0,
+                page=page,
+                per_page=per_page,
+                total_pages=0
+            )
+        
+        # Filter query to only include dishes from past orders
+        query = query.filter(Dish.id.in_(dish_id_list))
+        
+        # Sort by most recently ordered (using max order ID as proxy)
+        from sqlalchemy import select
+        subquery = select(
+            OrderedDish.DishID,
+            func.max(Order.id).label('latest_order_id')
+        ).join(
+            Order, OrderedDish.orderID == Order.id
+        ).where(
+            Order.accountID == current_user.ID,
+            Order.status.in_(['paid', 'assigned', 'in_transit', 'delivered'])
+        ).group_by(OrderedDish.DishID).subquery()
+        
+        query = query.join(
+            subquery, Dish.id == subquery.c.DishID
+        ).order_by(desc(subquery.c.latest_order_id))
+    
+    # Apply other ordering options
+    elif order_by == "popular":
         query = query.order_by(desc(Dish.reviews), desc(Dish.average_rating))
     elif order_by == "rating":
         query = query.order_by(desc(Dish.average_rating), desc(Dish.reviews))
