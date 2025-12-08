@@ -50,7 +50,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const getTypeColor = (type: string, amount: number) => {
+  const getTypeColor = (_type: string, amount: number) => {
     if (amount > 0) {
       return 'text-green-600';
     } else {

@@ -5,7 +5,6 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import apiClient from '../lib/api-client';
 import DishCard from '../components/DishCard';
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -32,7 +31,6 @@ const ImageSearchPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchComplete, setSearchComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -279,22 +277,14 @@ const ImageSearchPage: React.FC = () => {
                     id: dish.id,
                     name: dish.name,
                     description: dish.description,
-                    price_cents: dish.cost,
-                    price_formatted: dish.cost_formatted,
-                    category: null,
-                    is_available: true,
-                    is_special: false,
+                    cost: dish.cost,
+                    cost_formatted: dish.cost_formatted,
                     average_rating: dish.average_rating,
-                    review_count: dish.reviews,
-                    order_count: 0,
-                    chef_id: dish.chefID,
-                    chef_name: null,
-                    images: [],
+                    reviews: dish.reviews,
                     picture: dish.picture,
-                    created_at: '',
-                    updated_at: '',
+                    chefID: dish.chefID,
+                    restaurantID: dish.restaurantID || 1,
                   }}
-                  onClick={() => navigate(`/dishes/${dish.id}`)}
                 />
               </div>
             ))}

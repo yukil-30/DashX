@@ -5,7 +5,6 @@ import apiClient from '../../lib/api-client';
 
 export default function RegisterManagerPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

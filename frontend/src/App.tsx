@@ -21,6 +21,11 @@ import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
 import { ManagerComplaints } from './pages/manager/ManagerComplaints'
+import { ManagerDashboard } from './pages/manager/ManagerDashboard'
+import { ManagerEmployees } from './pages/manager/ManagerEmployees'
+import { ManagerDisputes } from './pages/manager/ManagerDisputes'
+import { ManagerBidding } from './pages/manager/ManagerBidding'
+import { ManagerKB } from './pages/manager/ManagerKB'
 
 // Customer Feature Pages
 import CustomerDashboard from './pages/customer/CustomerDashboard'
@@ -62,14 +67,20 @@ function Navigation() {
 
             {/* Role-specific links */}
             {user?.type === 'manager' && (
-              <>
-                <Link to="/manager/orders" className="text-gray-700 hover:text-primary-600 font-medium">
-                  Manage Orders
-                </Link>
-                <Link to="/manager/complaints" className="text-gray-700 hover:text-primary-600 font-medium">
-                  Complaints
-                </Link>
-              </>
+              <div className="relative group">
+                <button className="text-gray-700 hover:text-primary-600 font-medium flex items-center gap-1">
+                  Manager Menu ▾
+                </button>
+                <div className="absolute top-full left-0 hidden group-hover:block bg-white shadow-lg rounded-lg border py-2 min-w-48 z-50">
+                  <Link to="/manager/dashboard" className="block px-4 py-2 hover:bg-gray-100">📊 Dashboard</Link>
+                  <Link to="/manager/employees" className="block px-4 py-2 hover:bg-gray-100">👥 Employees</Link>
+                  <Link to="/manager/orders" className="block px-4 py-2 hover:bg-gray-100">📋 Orders</Link>
+                  <Link to="/manager/disputes" className="block px-4 py-2 hover:bg-gray-100">⚖️ Disputes</Link>
+                  <Link to="/manager/bidding" className="block px-4 py-2 hover:bg-gray-100">🎯 Bidding</Link>
+                  <Link to="/manager/kb" className="block px-4 py-2 hover:bg-gray-100">📚 KB Moderation</Link>
+                  <Link to="/manager/complaints" className="block px-4 py-2 hover:bg-gray-100">📝 Complaints</Link>
+                </div>
+              </div>
             )}
 
             {user?.type === 'chef' && (
@@ -228,6 +239,36 @@ function AppRoutes() {
       <Route path="/forum/:threadId" element={<ThreadDetailPage />} />
 
       {/* Manager Routes */}
+      <Route
+        path="/manager/dashboard"
+        element={
+          user?.type === 'manager' ? <ManagerDashboard /> : <Navigate to="/" replace />
+        }
+      />
+      <Route
+        path="/manager/employees"
+        element={
+          user?.type === 'manager' ? <ManagerEmployees /> : <Navigate to="/" replace />
+        }
+      />
+      <Route
+        path="/manager/disputes"
+        element={
+          user?.type === 'manager' ? <ManagerDisputes /> : <Navigate to="/" replace />
+        }
+      />
+      <Route
+        path="/manager/bidding"
+        element={
+          user?.type === 'manager' ? <ManagerBidding /> : <Navigate to="/" replace />
+        }
+      />
+      <Route
+        path="/manager/kb"
+        element={
+          user?.type === 'manager' ? <ManagerKB /> : <Navigate to="/" replace />
+        }
+      />
       <Route
         path="/manager/orders"
         element={

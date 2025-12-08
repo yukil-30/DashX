@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import apiClient from '../lib/api-client';
-import { ChefProfile, DishReview } from '../types/api';
+import { ChefProfile } from '../types/api';
 import { DishCard, RatingStars } from '../components';
 
 export default function ChefProfilePage() {

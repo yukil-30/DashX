@@ -2,7 +2,6 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { AuthProvider, useAuth } from '../AuthContext';
 import apiClient from '../../lib/api-client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import React from 'react';
 
 // Mock apiClient
 vi.mock('../../lib/api-client', () => ({

@@ -3,14 +3,13 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import apiClient from '../../lib/api-client';
 import { OrderHistory, OrderHistoryListResponse } from '../../types/api';
-import { RatingStars } from '../../components';
 
 export default function OrderHistoryPage() {
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [selectedOrder, setSelectedOrder] = useState<OrderHistory | null>(null);
+  const [_selectedOrder, _setSelectedOrder] = useState<OrderHistory | null>(null);
   const [reviewModal, setReviewModal] = useState<{
     type: 'dish' | 'delivery';
     orderId: number;

@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../lib/api-client';
-import { CustomerDashboardResponse, BalanceResponse, DepositResponse } from '../../types/api';
+import { CustomerDashboardResponse, DepositResponse } from '../../types/api';
 import { DishCard, RatingStars } from '../../components';
 
 export default function CustomerDashboard() {
-  const { user, refreshProfile } = useAuth();
+  const { refreshProfile } = useAuth();
   const [dashboard, setDashboard] = useState<CustomerDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

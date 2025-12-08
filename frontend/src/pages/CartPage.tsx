@@ -20,7 +20,7 @@ export default function CartPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [vipInfo, setVipInfo] = useState<VIPInfo | null>(null);
-  const [loadingVip, setLoadingVip] = useState(true);
+  const [, setLoadingVip] = useState(true);
 
   // Fetch VIP status
   useEffect(() => {
