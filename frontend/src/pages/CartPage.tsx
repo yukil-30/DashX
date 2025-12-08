@@ -4,7 +4,6 @@ import toast from 'react-hot-toast';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../lib/api-client';
-import { CreateOrderRequest, CustomerDashboardResponse } from '../types/api';
 
 interface VIPInfo {
   is_vip: boolean;
@@ -12,9 +11,17 @@ interface VIPInfo {
   free_deliveries_remaining: number;
 }
 
+interface CustomerDashboardResponse {
+  vip_status: {
+    is_vip: boolean;
+    discount_percent: number;
+    free_delivery_credits: number;
+  };
+}
+
 export default function CartPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { items, updateQuantity, removeFromCart, clearCart, totalCost } = useCart();
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [loading, setLoading] = useState(false);
@@ -65,23 +72,86 @@ export default function CartPage() {
     setError('');
 
     try {
-      const orderRequest: CreateOrderRequest = {
+      // Build order request - CRITICAL: backend expects 'qty' not 'quantity'
+      const orderRequest = {
         items: items.map((item) => ({
           dish_id: item.dish.id,
-          quantity: item.quantity,
+          qty: item.quantity,  // KEY FIX: Use 'qty' to match backend schema
         })),
         delivery_address: deliveryAddress.trim(),
       };
 
-      await apiClient.post('/orders', orderRequest);
+      console.log('Submitting order:', orderRequest);
+
+      // Submit the order
+      const response = await apiClient.post('/orders', orderRequest);
       
+      console.log('Order response:', response.data);
+      
+      // Clear cart on success
       clearCart();
+      
+      // Refresh user profile to update balance
+      if (refreshProfile) {
+        await refreshProfile();
+      }
+      
+      // Show success message
       toast.success('Order placed successfully! 🎉');
+      
+      // Navigate to home or orders page
       navigate('/');
+      
     } catch (err: any) {
-      const errorMsg = err.response?.data?.detail || 'Failed to place order';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      console.error('Order submission error:', err);
+      
+      // Parse the error response
+      let errorMessage = 'Failed to place order';
+      
+      if (err.response) {
+        console.error('Error status:', err.response.status);
+        console.error('Error data:', err.response.data);
+        
+        const status = err.response.status;
+        const detail = err.response.data?.detail;
+        
+        if (status === 422) {
+          // Validation error - extract meaningful message
+          if (Array.isArray(detail)) {
+            // Pydantic validation errors
+            errorMessage = detail.map((e: any) => {
+              const field = e.loc?.join('.') || 'field';
+              return `${field}: ${e.msg}`;
+            }).join('; ');
+          } else if (typeof detail === 'string') {
+            errorMessage = detail;
+          } else {
+            errorMessage = 'Invalid request format. Please check your cart items.';
+          }
+        } else if (status === 402) {
+          // Payment required - insufficient balance
+          if (typeof detail === 'object' && detail.error === 'insufficient_deposit') {
+            errorMessage = `Insufficient balance. You need $${(detail.required_amount / 100).toFixed(2)} but only have $${(detail.current_balance / 100).toFixed(2)}. Please deposit $${(detail.shortfall / 100).toFixed(2)} more.`;
+          } else {
+            errorMessage = 'Insufficient balance to place order';
+          }
+        } else if (status === 403) {
+          errorMessage = 'You do not have permission to place orders';
+        } else if (status === 404) {
+          errorMessage = 'One or more dishes in your cart were not found';
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else if (detail) {
+          errorMessage = JSON.stringify(detail);
+        }
+      } else if (err.request) {
+        errorMessage = 'Network error. Please check your connection.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -282,7 +352,7 @@ export default function CartPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full text-lg py-3"
+                className="btn-primary w-full text-lg py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Placing Order...' : 'Place Order'}
               </button>

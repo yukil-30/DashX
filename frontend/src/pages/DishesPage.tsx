@@ -68,6 +68,20 @@ export default function DishesPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Determine the empty message based on the current sort option
+  const getEmptyMessage = () => {
+    if (orderBy === 'past_orders') {
+      if (!user) {
+        return 'Please log in to view your past orders';
+      }
+      return "You haven't ordered any dishes yet";
+    }
+    if (search) {
+      return `No dishes found for "${search}"`;
+    }
+    return 'No dishes available';
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -105,14 +119,22 @@ export default function DishesPage() {
             <option value="rating">Highest Rated</option>
             <option value="cost">Price: Low to High</option>
             <option value="newest">Newest</option>
+            <option value="past_orders">Past Orders</option>
           </select>
         </div>
 
         {/* Results info */}
         {data && (
           <div className="mt-4 text-gray-600">
-            Showing {data.dishes.length} of {data.total} dishes
-            {search && ` for "${search}"`}
+            {orderBy === 'past_orders' && data.total === 0 ? (
+              <span>{getEmptyMessage()}</span>
+            ) : (
+              <>
+                Showing {data.dishes.length} of {data.total} dishes
+                {search && ` for "${search}"`}
+                {orderBy === 'past_orders' && ' from your past orders'}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -128,7 +150,7 @@ export default function DishesPage() {
       <DishGrid
         dishes={data?.dishes || []}
         loading={loading}
-        emptyMessage={search ? `No dishes found for "${search}"` : 'No dishes available'}
+        emptyMessage={getEmptyMessage()}
         onAddToCart={user?.type === 'customer' ? (dish) => {
           console.log('Add to cart:', dish);
         } : undefined}

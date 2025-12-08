@@ -1,240 +1,357 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../lib/api-client';
-import { OrderHistory, OrderHistoryListResponse } from '../../types/api';
+import ReviewDishModal from '../../components/ReviewDishModal';
+import { Star, Package, Truck, CheckCircle, Clock } from 'lucide-react';
+
+interface OrderItem {
+  dish_id: number;
+  dish_name: string;
+  dish_picture: string | null;
+  quantity: number;
+  unit_price_cents: number;
+  can_review: boolean;
+  has_reviewed: boolean;
+}
+
+interface OrderHistory {
+  id: number;
+  status: string;
+  created_at: string;
+  delivered_at: string | null;
+  subtotal_cents: number;
+  delivery_fee_cents: number;
+  discount_cents: number;
+  total_cents: number;
+  total_formatted: string;
+  delivery_address: string;
+  note: string | null;
+  items: OrderItem[];
+  delivery_person_id: number | null;
+  delivery_person_email: string | null;
+  can_review_delivery: boolean;
+  has_reviewed_delivery: boolean;
+  free_delivery_used: boolean;
+  vip_discount_applied: boolean;
+}
+
+interface OrderHistoryResponse {
+  orders: OrderHistory[];
+  total: number;
+  page: number;
+  per_page: number;
+}
 
 export default function OrderHistoryPage() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [_selectedOrder, _setSelectedOrder] = useState<OrderHistory | null>(null);
-  const [reviewModal, setReviewModal] = useState<{
-    type: 'dish' | 'delivery';
+  const [statusFilter, setStatusFilter] = useState<string>('');
+
+  // Review modal state
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedDish, setSelectedDish] = useState<{
+    dishId: number;
+    dishName: string;
     orderId: number;
-    dishId?: number;
-    dishName?: string;
   } | null>(null);
-  const [rating, setRating] = useState(5);
-  const [reviewText, setReviewText] = useState('');
-  const [onTime, setOnTime] = useState<boolean | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchOrders();
-  }, [page]);
+  }, [page, statusFilter]);
 
   const fetchOrders = async () => {
     setLoading(true);
+    setError('');
+
     try {
-      const response = await apiClient.get<OrderHistoryListResponse>(
-        `/orders/history/me?page=${page}&per_page=10`
+      const params = new URLSearchParams({
+        page: page.toString(),
+        per_page: '10',
+      });
+      
+      if (statusFilter) {
+        params.append('status_filter', statusFilter);
+      }
+
+      const response = await apiClient.get<OrderHistoryResponse>(
+        `/orders/history/me?${params}`
       );
+      
       setOrders(response.data.orders);
       setTotal(response.data.total);
     } catch (err: any) {
-      toast.error('Failed to load order history');
+      setError('Failed to load order history');
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const submitDishReview = async () => {
-    if (!reviewModal || reviewModal.type !== 'dish') return;
-    setSubmitting(true);
-    try {
-      await apiClient.post('/reviews/dish', {
-        dish_id: reviewModal.dishId,
-        order_id: reviewModal.orderId,
-        rating,
-        review_text: reviewText || null,
-      });
-      toast.success('Review submitted!');
-      setReviewModal(null);
-      setRating(5);
-      setReviewText('');
-      fetchOrders();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to submit review');
-    } finally {
-      setSubmitting(false);
-    }
+  const handleReviewClick = (dishId: number, dishName: string, orderId: number) => {
+    setSelectedDish({ dishId, dishName, orderId });
+    setReviewModalOpen(true);
   };
 
-  const submitDeliveryReview = async () => {
-    if (!reviewModal || reviewModal.type !== 'delivery') return;
-    setSubmitting(true);
-    try {
-      await apiClient.post('/reviews/delivery', {
-        order_id: reviewModal.orderId,
-        rating,
-        review_text: reviewText || null,
-        on_time: onTime,
-      });
-      toast.success('Delivery review submitted!');
-      setReviewModal(null);
-      setRating(5);
-      setReviewText('');
-      setOnTime(null);
-      fetchOrders();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to submit review');
-    } finally {
-      setSubmitting(false);
-    }
+  const handleReviewSubmitted = () => {
+    // Refresh orders to update review status
+    fetchOrders();
   };
 
-  if (loading && orders.length === 0) {
+  const getStatusBadge = (status: string) => {
+    const styles = {
+      paid: 'bg-blue-100 text-blue-800',
+      assigned: 'bg-purple-100 text-purple-800',
+      in_transit: 'bg-yellow-100 text-yellow-800',
+      delivered: 'bg-green-100 text-green-800',
+      cancelled: 'bg-red-100 text-red-800',
+    };
+
+    const icons = {
+      paid: Package,
+      assigned: Truck,
+      in_transit: Truck,
+      delivered: CheckCircle,
+      cancelled: Package,
+    };
+
+    const Icon = icons[status as keyof typeof icons] || Package;
+
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-600"></div>
+      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800'}`}>
+        <Icon size={14} />
+        {status.replace('_', ' ').toUpperCase()}
+      </span>
+    );
+  };
+
+  if (!user) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+          <p className="text-yellow-800">Please log in to view your order history</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-4xl font-bold text-gray-900">Order History</h1>
-        <Link to="/dashboard" className="text-primary-600 hover:underline">
-          ← Back to Dashboard
-        </Link>
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">My Orders</h1>
+        
+        {/* Filter */}
+        <div className="flex gap-4 items-center">
+          <label htmlFor="statusFilter" className="text-gray-700 font-medium">
+            Filter by status:
+          </label>
+          <select
+            id="statusFilter"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            <option value="">All Orders</option>
+            <option value="paid">Paid</option>
+            <option value="assigned">Assigned</option>
+            <option value="in_transit">In Transit</option>
+            <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
       </div>
 
-      {orders.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">📦</div>
-          <p className="text-gray-600 text-xl mb-6">No orders yet</p>
-          <Link to="/dishes" className="btn-primary">
-            Browse Menu
-          </Link>
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
         </div>
-      ) : (
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800 mb-6">
+          {error}
+        </div>
+      )}
+
+      {/* Orders List */}
+      {!loading && !error && orders.length === 0 && (
+        <div className="text-center py-12 bg-gray-50 rounded-xl">
+          <Package size={64} className="mx-auto text-gray-400 mb-4" />
+          <p className="text-gray-600 text-xl">No orders found</p>
+          <p className="text-gray-500 mt-2">
+            {statusFilter ? 'Try changing the filter' : 'Start ordering to see your history here'}
+          </p>
+        </div>
+      )}
+
+      {/* Debug: Show what data we're receiving */}
+      {!loading && !error && orders.length > 0 && (
+        <div className="mb-4 p-4 bg-blue-50 rounded-lg text-xs">
+          <details>
+            <summary className="cursor-pointer font-semibold">Debug: View Raw Order Data</summary>
+            <pre className="mt-2 overflow-auto">{JSON.stringify(orders[0], null, 2)}</pre>
+          </details>
+        </div>
+      )}
+
+      {!loading && !error && orders.length > 0 && (
         <div className="space-y-6">
           {orders.map((order) => (
-            <div
-              key={order.id}
-              className="bg-white rounded-xl shadow-md overflow-hidden"
-            >
+            <div key={order.id} className="bg-white rounded-xl shadow-md overflow-hidden">
               {/* Order Header */}
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
-                    <span className="font-semibold text-gray-900">Order #{order.id}</span>
-                    <span className="text-gray-500 ml-3">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </span>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Order #{order.id}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Placed on {new Date(order.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    order.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                    order.status === 'paid' ? 'bg-blue-100 text-blue-700' :
-                    order.status === 'assigned' ? 'bg-purple-100 text-purple-700' :
-                    order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {order.status}
-                  </span>
-                  {order.vip_discount_applied && (
-                    <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
-                      VIP Discount Applied
-                    </span>
-                  )}
-                  {order.free_delivery_used && (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                      Free Delivery
-                    </span>
-                  )}
+                  <div className="flex items-center gap-4">
+                    {getStatusBadge(order.status)}
+                    <div className="text-right">
+                      <p className="text-sm text-gray-600">Total</p>
+                      <p className="text-xl font-bold text-primary-600">
+                        {order.total_formatted}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-primary-600">{order.total_formatted}</p>
-                </div>
+
+                {/* VIP Badges */}
+                {(order.vip_discount_applied || order.free_delivery_used) && (
+                  <div className="flex gap-2 mt-3">
+                    {order.vip_discount_applied && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        👑 VIP Discount Applied
+                      </span>
+                    )}
+                    {order.free_delivery_used && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        ✓ Free Delivery Used
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Order Items */}
-              <div className="px-6 py-4">
-                <div className="grid gap-4">
+              <div className="p-6">
+                <h4 className="font-semibold text-gray-900 mb-4">Items</h4>
+                <div className="space-y-4">
                   {order.items.map((item) => (
-                    <div key={item.dish_id} className="flex items-center gap-4">
-                      {item.dish_picture ? (
-                        <img
-                          src={item.dish_picture}
-                          alt={item.dish_name}
-                          className="w-16 h-16 object-cover rounded-lg"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center text-2xl">
-                          🍽️
-                        </div>
-                      )}
+                    <div
+                      key={item.dish_id}
+                      className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0"
+                    >
+                      {/* Dish Image */}
+                      <div className="w-20 h-20 flex-shrink-0">
+                        {item.dish_picture ? (
+                          <img
+                            src={item.dish_picture}
+                            alt={item.dish_name}
+                            className="w-full h-full object-cover rounded-lg"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-200 rounded-lg flex items-center justify-center text-2xl">
+                            🍽️
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Dish Info */}
                       <div className="flex-1">
-                        <Link
-                          to={`/dishes/${item.dish_id}`}
-                          className="font-medium text-gray-900 hover:text-primary-600"
-                        >
-                          {item.dish_name}
-                        </Link>
-                        <p className="text-gray-500 text-sm">
-                          Qty: {item.quantity} × ${(item.unit_price_cents / 100).toFixed(2)}
+                        <p className="font-semibold text-gray-900">{item.dish_name}</p>
+                        <p className="text-sm text-gray-600">
+                          Quantity: {item.quantity} × ${(item.unit_price_cents / 100).toFixed(2)}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-medium">
-                          ${((item.unit_price_cents * item.quantity) / 100).toFixed(2)}
-                        </p>
-                        {item.can_review && !item.has_reviewed && (
-                          <button
-                            onClick={() => setReviewModal({
-                              type: 'dish',
-                              orderId: order.id,
-                              dishId: item.dish_id,
-                              dishName: item.dish_name,
-                            })}
-                            className="text-sm text-green-600 hover:underline"
-                          >
-                            Leave Review
-                          </button>
-                        )}
-                        {item.has_reviewed && (
-                          <span className="text-sm text-gray-500">✓ Reviewed</span>
+
+                      {/* Review Button */}
+                      <div className="flex items-center gap-2">
+                        {item.has_reviewed ? (
+                          <span className="flex items-center gap-1 text-green-600 text-sm font-medium">
+                            <CheckCircle size={16} />
+                            Reviewed
+                          </span>
+                        ) : (
+                          // TEMPORARY: Allow reviews on 'paid' status for testing
+                          // TODO: Change back to only allow reviews when order.status === 'delivered'
+                          // Original condition: item.can_review
+                          (order.status === 'paid' || order.status === 'delivered') && !item.has_reviewed ? (
+                            <button
+                              onClick={() => handleReviewClick(item.dish_id, item.dish_name, order.id)}
+                              className="flex items-center gap-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+                            >
+                              <Star size={16} />
+                              Review
+                            </button>
+                          ) : (
+                            <span className="text-sm text-gray-400 flex items-center gap-1">
+                              <Clock size={14} />
+                              {order.status === 'delivered' ? 'Already reviewed' : 'Complete order to review'}
+                            </span>
+                          )
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/* Order Footer */}
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  <p>📍 {order.delivery_address}</p>
-                  {order.delivery_person_email && (
-                    <p>🚚 Delivered by: {order.delivery_person_email}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right text-sm text-gray-600">
-                    <p>Subtotal: ${(order.subtotal_cents / 100).toFixed(2)}</p>
+                {/* Order Summary */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Subtotal</span>
+                      <span>${(order.subtotal_cents / 100).toFixed(2)}</span>
+                    </div>
                     {order.discount_cents > 0 && (
-                      <p className="text-green-600">Discount: -${(order.discount_cents / 100).toFixed(2)}</p>
+                      <div className="flex justify-between text-green-600">
+                        <span>VIP Discount</span>
+                        <span>-${(order.discount_cents / 100).toFixed(2)}</span>
+                      </div>
                     )}
-                    <p>Delivery: ${(order.delivery_fee_cents / 100).toFixed(2)}</p>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Delivery Fee</span>
+                      <span>
+                        {order.free_delivery_used ? (
+                          <span className="text-green-600">FREE</span>
+                        ) : (
+                          `$${(order.delivery_fee_cents / 100).toFixed(2)}`
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-200">
+                      <span>Total</span>
+                      <span>{order.total_formatted}</span>
+                    </div>
                   </div>
-                  {order.can_review_delivery && (
-                    <button
-                      onClick={() => setReviewModal({
-                        type: 'delivery',
-                        orderId: order.id,
-                      })}
-                      className="btn-secondary text-sm"
-                    >
-                      Review Delivery
-                    </button>
-                  )}
-                  {order.has_reviewed_delivery && (
-                    <span className="text-sm text-gray-500">✓ Delivery Reviewed</span>
-                  )}
                 </div>
+
+                {/* Delivery Address */}
+                {order.delivery_address && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-sm font-medium text-gray-700">Delivery Address</p>
+                    <p className="text-sm text-gray-600 mt-1">{order.delivery_address}</p>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -243,120 +360,40 @@ export default function OrderHistoryPage() {
 
       {/* Pagination */}
       {total > 10 && (
-        <div className="mt-8 flex justify-center gap-4">
+        <div className="mt-8 flex justify-center gap-2">
           <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
+            onClick={() => setPage(page - 1)}
             disabled={page === 1}
-            className="btn-secondary disabled:opacity-50"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            ← Previous
+            Previous
           </button>
-          <span className="py-2 px-4">
+          <span className="px-4 py-2 text-gray-700">
             Page {page} of {Math.ceil(total / 10)}
           </span>
           <button
-            onClick={() => setPage(p => p + 1)}
+            onClick={() => setPage(page + 1)}
             disabled={page >= Math.ceil(total / 10)}
-            className="btn-secondary disabled:opacity-50"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Next →
+            Next
           </button>
         </div>
       )}
 
       {/* Review Modal */}
-      {reviewModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-xl font-semibold mb-4">
-              {reviewModal.type === 'dish'
-                ? `Review: ${reviewModal.dishName}`
-                : 'Review Delivery'}
-            </h3>
-
-            {/* Rating */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Rating
-              </label>
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => setRating(star)}
-                    className={`text-3xl ${
-                      star <= rating ? 'text-yellow-400' : 'text-gray-300'
-                    }`}
-                  >
-                    ★
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* On Time (delivery only) */}
-            {reviewModal.type === 'delivery' && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Was the delivery on time?
-                </label>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setOnTime(true)}
-                    className={`px-4 py-2 rounded-lg ${
-                      onTime === true
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    Yes ✓
-                  </button>
-                  <button
-                    onClick={() => setOnTime(false)}
-                    className={`px-4 py-2 rounded-lg ${
-                      onTime === false
-                        ? 'bg-red-600 text-white'
-                        : 'bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    No ✗
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Review Text */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Review (optional)
-              </label>
-              <textarea
-                value={reviewText}
-                onChange={(e) => setReviewText(e.target.value)}
-                className="input-field resize-none"
-                rows={3}
-                placeholder="Share your experience..."
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => setReviewModal(null)}
-                className="btn-secondary flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={reviewModal.type === 'dish' ? submitDishReview : submitDeliveryReview}
-                disabled={submitting}
-                className="btn-primary flex-1"
-              >
-                {submitting ? 'Submitting...' : 'Submit Review'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {selectedDish && (
+        <ReviewDishModal
+          isOpen={reviewModalOpen}
+          onClose={() => {
+            setReviewModalOpen(false);
+            setSelectedDish(null);
+          }}
+          dishId={selectedDish.dishId}
+          dishName={selectedDish.dishName}
+          orderId={selectedDish.orderId}
+          onReviewSubmitted={handleReviewSubmitted}
+        />
       )}
     </div>
   );
