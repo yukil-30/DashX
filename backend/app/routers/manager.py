@@ -947,7 +947,7 @@ async def list_disputes(
             about_warnings=about.warnings if about else 0,
             about_complaints_count=about_complaints,
             about_compliments_count=about_compliments,
-            created_at=c.created_at
+            created_at=c.created_at.isoformat() if c.created_at else None
         ))
     
     return DisputeListResponse(
@@ -1412,7 +1412,7 @@ async def get_kb_for_moderation(
             is_active=entry.is_active,
             flagged_count=entry_flagged,
             avg_rating=float(avg_rating_result) if avg_rating_result else None,
-            created_at=entry.created_at
+            created_at=entry.created_at.isoformat() if hasattr(entry.created_at, 'isoformat') else entry.created_at
         ))
     
     return KBModerationListResponse(

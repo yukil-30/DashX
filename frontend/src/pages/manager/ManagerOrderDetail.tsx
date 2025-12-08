@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import apiClient from '../../lib/api-client';
 import {
   Order,
   BidListResponse,
@@ -10,13 +10,7 @@ import {
 } from '../../types/order';
 import './ManagerOrderDetail.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-interface ManagerOrderDetailProps {
-  token: string;
-}
-
-export function ManagerOrderDetail({ token }: ManagerOrderDetailProps) {
+export function ManagerOrderDetail() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   
@@ -29,10 +23,6 @@ export function ManagerOrderDetail({ token }: ManagerOrderDetailProps) {
   const [memo, setMemo] = useState('');
   const [showMemoModal, setShowMemoModal] = useState(false);
 
-  const headers = {
-    Authorization: `Bearer ${token}`,
-  };
-
   useEffect(() => {
     fetchData();
   }, [orderId]);
@@ -42,8 +32,8 @@ export function ManagerOrderDetail({ token }: ManagerOrderDetailProps) {
     setError(null);
     try {
       const [orderRes, bidsRes] = await Promise.all([
-        axios.get<Order>(`${API_URL}/orders/${orderId}`, { headers }),
-        axios.get<BidListResponse>(`${API_URL}/orders/${orderId}/bids`, { headers }),
+        apiClient.get<Order>(`/orders/${orderId}`),
+        apiClient.get<BidListResponse>(`/orders/${orderId}/bids`),
       ]);
       setOrder(orderRes.data);
       setBidsData(bidsRes.data);
@@ -75,10 +65,9 @@ export function ManagerOrderDetail({ token }: ManagerOrderDetailProps) {
         request.memo = memoText.trim();
       }
       
-      await axios.post(
-        `${API_URL}/orders/${orderId}/assign`,
-        request,
-        { headers }
+      await apiClient.post(
+        `/orders/${orderId}/assign`,
+        request
       );
       
       setShowMemoModal(false);

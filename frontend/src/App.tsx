@@ -273,7 +273,7 @@ function AppRoutes() {
         path="/manager/orders"
         element={
           user?.type === 'manager' ? (
-            <ManagerOrders token={user ? 'token' : ''} />
+            <ManagerOrders />
           ) : (
             <Navigate to="/" replace />
           )
@@ -283,7 +283,7 @@ function AppRoutes() {
         path="/manager/orders/:orderId"
         element={
           user?.type === 'manager' ? (
-            <ManagerOrderDetail token={user ? 'token' : ''} />
+            <ManagerOrderDetail />
           ) : (
             <Navigate to="/" replace />
           )
@@ -293,7 +293,7 @@ function AppRoutes() {
         path="/manager/complaints"
         element={
           user?.type === 'manager' ? (
-            <ManagerComplaints token={user ? 'token' : ''} />
+            <ManagerComplaints />
           ) : (
             <Navigate to="/" replace />
           )

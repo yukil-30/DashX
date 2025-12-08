@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import apiClient from '../../lib/api-client';
 import './ManagerComplaints.css';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface Complaint {
   id: number;
@@ -37,10 +35,10 @@ interface ResolveResponse {
 }
 
 interface ManagerComplaintsProps {
-  token: string;
+  token?: string;
 }
 
-export function ManagerComplaints({ token }: ManagerComplaintsProps) {
+export function ManagerComplaints(_props: ManagerComplaintsProps) {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [total, setTotal] = useState(0);
   const [unresolvedCount, setUnresolvedCount] = useState(0);
@@ -53,10 +51,6 @@ export function ManagerComplaints({ token }: ManagerComplaintsProps) {
   const [resolveNotes, setResolveNotes] = useState('');
   const [resolveResult, setResolveResult] = useState<ResolveResponse | null>(null);
 
-  const headers = {
-    Authorization: `Bearer ${token}`,
-  };
-
   const fetchComplaints = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -65,10 +59,7 @@ export function ManagerComplaints({ token }: ManagerComplaintsProps) {
       if (statusFilter) params.status_filter = statusFilter;
       if (typeFilter) params.type_filter = typeFilter;
       
-      const response = await axios.get<ComplaintListResponse>(`${API_URL}/complaints`, {
-        headers,
-        params,
-      });
+      const response = await apiClient.get<ComplaintListResponse>('/complaints', { params });
       setComplaints(response.data.complaints);
       setTotal(response.data.total);
       setUnresolvedCount(response.data.unresolved_count);
@@ -77,7 +68,7 @@ export function ManagerComplaints({ token }: ManagerComplaintsProps) {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, typeFilter, token]);
+  }, [statusFilter, typeFilter]);
 
   useEffect(() => {
     fetchComplaints();
@@ -90,13 +81,12 @@ export function ManagerComplaints({ token }: ManagerComplaintsProps) {
     setResolveResult(null);
     
     try {
-      const response = await axios.patch<ResolveResponse>(
-        `${API_URL}/complaints/${selectedComplaint.id}/resolve`,
+      const response = await apiClient.patch<ResolveResponse>(
+        `/complaints/${selectedComplaint.id}/resolve`,
         {
           resolution,
           notes: resolveNotes || null,
-        },
-        { headers }
+        }
       );
       
       setResolveResult(response.data);

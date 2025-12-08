@@ -1,25 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import apiClient from '../../lib/api-client';
 import { Order, formatCents } from '../../types/order';
 import './ManagerOrders.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-interface ManagerOrdersProps {
-  token: string;
-}
-
-export function ManagerOrders({ token }: ManagerOrdersProps) {
+export function ManagerOrders() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-  };
 
   useEffect(() => {
     fetchOrders();
@@ -33,10 +23,7 @@ export function ManagerOrders({ token }: ManagerOrdersProps) {
       if (statusFilter) {
         params.status_filter = statusFilter;
       }
-      const response = await axios.get<Order[]>(`${API_URL}/orders`, {
-        headers,
-        params,
-      });
+      const response = await apiClient.get<Order[]>('/orders', { params });
       setOrders(response.data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load orders');
