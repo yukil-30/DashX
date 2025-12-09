@@ -4,9 +4,12 @@ import apiClient from '../lib/api-client';
 import { HomeResponse } from '../types/api';
 import { DishGrid } from '../components';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../contexts/CartContext';
+import toast from 'react-hot-toast';
 
 export default function HomePage() {
   const { user } = useAuth();
+  const { addToCart } = useCart();
   const [data, setData] = useState<HomeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,6 +28,11 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAddToCart = (dish: any) => {
+    addToCart(dish, 1);
+    toast.success(`${dish.name} added to cart!`);
   };
 
   if (loading) {
@@ -82,10 +90,7 @@ export default function HomePage() {
           </div>
           <DishGrid
             dishes={data.most_ordered}
-            onAddToCart={user?.type === 'customer' ? (dish) => {
-              // Add to cart logic - will implement later
-              console.log('Add to cart:', dish);
-            } : undefined}
+            onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
           />
         </section>
       )}
@@ -103,9 +108,7 @@ export default function HomePage() {
           </div>
           <DishGrid
             dishes={data.top_rated}
-            onAddToCart={user?.type === 'customer' ? (dish) => {
-              console.log('Add to cart:', dish);
-            } : undefined}
+            onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
           />
         </section>
       )}

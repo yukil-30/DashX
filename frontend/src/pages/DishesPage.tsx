@@ -4,9 +4,12 @@ import apiClient from '../lib/api-client';
 import { DishListResponse } from '../types/api';
 import { DishGrid } from '../components';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../contexts/CartContext';
+import toast from 'react-hot-toast';
 
 export default function DishesPage() {
   const { user } = useAuth();
+  const { addToCart } = useCart();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<DishListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,6 +85,11 @@ export default function DishesPage() {
     return 'No dishes available';
   };
 
+  const handleAddToCart = (dish: any) => {
+    addToCart(dish, 1);
+    toast.success(`${dish.name} added to cart!`);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -151,9 +159,7 @@ export default function DishesPage() {
         dishes={data?.dishes || []}
         loading={loading}
         emptyMessage={getEmptyMessage()}
-        onAddToCart={user?.type === 'customer' ? (dish) => {
-          console.log('Add to cart:', dish);
-        } : undefined}
+        onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
       />
 
       {/* Pagination */}

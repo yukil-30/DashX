@@ -43,14 +43,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.dish.id === dish.id);
       if (existingItem) {
-        toast.success(`Added ${quantity} more ${dish.name} to cart`);
+        //toast.success(`Added ${quantity} more ${dish.name} to cart`);
         return prevItems.map((item) =>
           item.dish.id === dish.id
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       } else {
-        toast.success(`${dish.name} added to cart`);
+        //toast.success(`${dish.name} added to cart`);
         return [...prevItems, { dish, quantity }];
       }
     });
