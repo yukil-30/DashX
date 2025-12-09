@@ -75,7 +75,8 @@ def create_mock_order(
     delivery_fee=500,
     subtotal_cents=1000,
     discount_cents=0,
-    free_delivery_used=0
+    free_delivery_used=0,
+    bidding_closes_at=None
 ):
     """Create a mock order"""
     mock_order = MagicMock(spec=Order)
@@ -91,17 +92,19 @@ def create_mock_order(
     mock_order.subtotal_cents = subtotal_cents
     mock_order.discount_cents = discount_cents
     mock_order.free_delivery_used = free_delivery_used
+    mock_order.bidding_closes_at = bidding_closes_at
     mock_order.ordered_dishes = []
     return mock_order
 
 
-def create_mock_bid(id=1, deliveryPersonID=2, orderID=1, bidAmount=300):
+def create_mock_bid(id=1, deliveryPersonID=2, orderID=1, bidAmount=300, created_at=None):
     """Create a mock bid"""
     mock_bid = MagicMock(spec=Bid)
     mock_bid.id = id
     mock_bid.deliveryPersonID = deliveryPersonID
     mock_bid.orderID = orderID
     mock_bid.bidAmount = bidAmount
+    mock_bid.created_at = created_at
     mock_bid.delivery_person = create_mock_user(
         ID=deliveryPersonID, 
         email="delivery@example.com", 

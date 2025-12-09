@@ -4,6 +4,7 @@ POST /bids - Create a new bid (with order_id in body)
 GET /bids/scoreboard - Get delivery person scoreboard
 """
 
+from datetime import datetime, timezone, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -21,6 +22,10 @@ from app.schemas import (
 
 router = APIRouter(prefix="/bids", tags=["Bids"])
 
+# Configuration
+BIDDING_DURATION_MINUTES = 30  # How long bidding stays open
+BID_THROTTLE_SECONDS = 30  # Minimum time between bids from same user
+
 
 @router.post("", response_model=BidResponse, status_code=status.HTTP_201_CREATED)
 async def create_bid_standalone(
@@ -33,7 +38,14 @@ async def create_bid_standalone(
     This is an alternative to POST /orders/{id}/bid that takes order_id in the body.
     Only delivery personnel can submit bids.
     Order must be in 'paid' status (open for bidding).
+    
+    Enforces:
+    - Bidding deadline check
+    - Bid throttle (30 seconds between bids)
     """
+    now = datetime.now(timezone.utc)
+    now_str = now.isoformat()
+    
     # Only delivery personnel can bid
     if current_user.type != "delivery":
         raise HTTPException(
@@ -65,6 +77,15 @@ async def create_bid_standalone(
             detail=f"Order is not open for bidding. Current status: {order.status}"
         )
     
+    # Check if bidding has closed
+    if order.bidding_closes_at:
+        closes_at = datetime.fromisoformat(order.bidding_closes_at.replace('Z', '+00:00'))
+        if now > closes_at:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bidding has closed for this order"
+            )
+    
     # Check if this delivery person already bid on this order
     existing_bid = db.query(Bid).filter(
         Bid.orderID == order_id,
@@ -77,14 +98,35 @@ async def create_bid_standalone(
             detail="You have already submitted a bid for this order"
         )
     
+    # Check bid throttle - get user's most recent bid
+    last_bid = db.query(Bid).filter(
+        Bid.deliveryPersonID == current_user.ID
+    ).order_by(Bid.id.desc()).first()
+    
+    if last_bid and last_bid.created_at:
+        last_bid_time = datetime.fromisoformat(last_bid.created_at.replace('Z', '+00:00'))
+        time_since_last_bid = (now - last_bid_time).total_seconds()
+        if time_since_last_bid < BID_THROTTLE_SECONDS:
+            wait_time = int(BID_THROTTLE_SECONDS - time_since_last_bid)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Please wait {wait_time} seconds before placing another bid"
+            )
+    
     # Create bid
     bid = Bid(
         deliveryPersonID=current_user.ID,
         orderID=order_id,
         bidAmount=bid_request.price_cents,
-        estimated_minutes=bid_request.estimated_minutes
+        estimated_minutes=bid_request.estimated_minutes,
+        created_at=now_str
     )
     db.add(bid)
+    
+    # Set bidding close time if not already set
+    if not order.bidding_closes_at:
+        order.bidding_closes_at = (now + timedelta(minutes=BIDDING_DURATION_MINUTES)).isoformat()
+    
     db.commit()
     db.refresh(bid)
     

@@ -18,6 +18,7 @@ import ChefDashboard from './pages/chef/ChefDashboard'
 import CreateDish from './pages/chef/CreateDish';
 import ModifyDish from "./pages/chef/ModifyDish";
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
+import DeliveryHistoryPage from './pages/delivery/DeliveryHistoryPage'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
 import { ManagerComplaints } from './pages/manager/ManagerComplaints'
@@ -319,6 +320,12 @@ function AppRoutes() {
         path="/delivery/dashboard"
         element={
           user?.type === 'delivery' ? <DeliveryDashboard /> : <Navigate to="/" replace />
+        }
+      />
+      <Route
+        path="/delivery/history"
+        element={
+          user?.type === 'delivery' ? <DeliveryHistoryPage /> : <Navigate to="/" replace />
         }
       />
 

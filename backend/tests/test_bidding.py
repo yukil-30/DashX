@@ -52,7 +52,8 @@ def create_mock_order(
     accountID=1,
     status="paid",
     bidID=None,
-    assignment_memo=None
+    assignment_memo=None,
+    bidding_closes_at=None
 ):
     """Create a mock order"""
     mock_order = MagicMock(spec=Order)
@@ -69,6 +70,7 @@ def create_mock_order(
     mock_order.discount_cents = 0
     mock_order.free_delivery_used = 0
     mock_order.assignment_memo = assignment_memo
+    mock_order.bidding_closes_at = bidding_closes_at
     mock_order.ordered_dishes = []
     return mock_order
 

@@ -105,6 +105,8 @@ class Order(Base):
     discount_cents = Column(Integer, nullable=False, default=0)  # VIP discount applied
     free_delivery_used = Column(Integer, nullable=False, default=0)  # 1 if free delivery used
     assignment_memo = Column(Text, nullable=True)  # Manager memo when non-lowest bid assigned
+    bidding_closes_at = Column(Text, nullable=True)  # ISO timestamp when bidding closes
+    delivered_at = Column(Text, nullable=True)  # ISO timestamp when order was delivered
 
     # Relationships
     account = relationship("Account", back_populates="orders")
@@ -139,6 +141,7 @@ class Bid(Base):
     orderID = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     bidAmount = Column(Integer, nullable=False)  # In cents
     estimated_minutes = Column(Integer, nullable=False, default=30)  # Estimated delivery time
+    created_at = Column(Text, nullable=True)  # ISO timestamp for throttling
 
     # Relationships
     delivery_person = relationship("Account", back_populates="bids")
