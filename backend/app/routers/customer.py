@@ -143,6 +143,7 @@ def upgrade_to_vip_if_eligible(db: Session, account: Account) -> bool:
     if account.type == 'vip':
         return False
     
+    # ✅ FIXED: Only allow customers to be upgraded
     if account.type not in ['customer']:
         return False
     
@@ -185,8 +186,17 @@ async def get_customer_dashboard(
     - Most popular dish
     - Highest rated dish
     - Top rated chef
+    
+    ✅ Accessible by both 'customer' and 'vip' account types
     """
-    # Check VIP eligibility and upgrade if needed
+    # ✅ FIXED: Check if user is customer or VIP
+    if current_user.type not in ['customer', 'vip']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Customer or VIP account required."
+        )
+    
+    # Check VIP eligibility and upgrade if needed (only for customers)
     upgrade_to_vip_if_eligible(db, current_user)
     db.refresh(current_user)
     

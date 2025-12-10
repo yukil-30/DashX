@@ -695,6 +695,69 @@ async def mark_all_notifications_read(
 # Chef Performance Evaluation Endpoint
 # ============================================================
 
+# Add this endpoint to your reputation.py file
+
+@router.get("/my-summary")
+async def get_my_complaint_summary(
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get complaint/compliment summary for the current user (chef).
+    Returns stats and recent items.
+    """
+    if current_user.type != "chef":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only chefs can view this summary"
+        )
+    
+    # Count total complaints
+    total_complaints = db.query(Complaint).filter(
+        Complaint.accountID == current_user.ID,
+        Complaint.type == "complaint"
+    ).count()
+    
+    # Count unresolved complaints
+    unresolved_complaints = db.query(Complaint).filter(
+        Complaint.accountID == current_user.ID,
+        Complaint.type == "complaint",
+        Complaint.status == "pending"
+    ).count()
+    
+    # Count total compliments
+    total_compliments = db.query(Complaint).filter(
+        Complaint.accountID == current_user.ID,
+        Complaint.type == "compliment"
+    ).count()
+    
+    # Get recent items (last 5)
+    recent_items = db.query(Complaint).filter(
+        Complaint.accountID == current_user.ID
+    ).order_by(Complaint.created_at.desc()).limit(5).all()
+    
+    # Build response
+    recent_items_response = []
+    for item in recent_items:
+        filer_account = db.query(Account).filter(Account.ID == item.filer).first()
+        recent_items_response.append({
+            "id": item.id,
+            "type": item.type,
+            "description": item.description,
+            "filer_email": filer_account.email if filer_account else None,
+            "order_id": item.order_id,
+            "status": item.status,
+            "created_at": item.created_at.isoformat() if hasattr(item.created_at, "isoformat") else item.created_at
+        })
+    
+    return {
+        "total_complaints": total_complaints,
+        "unresolved_complaints": unresolved_complaints,
+        "total_compliments": total_compliments,
+        "net_score": total_compliments - total_complaints,
+        "recent_items": recent_items_response
+    }
+
 @router.post("/evaluate/chefs")
 async def evaluate_chef_performance(
     current_user: Account = Depends(require_manager),

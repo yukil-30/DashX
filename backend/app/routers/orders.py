@@ -7,9 +7,13 @@ POST /orders/{id}/bid - Submit delivery bid
 GET /orders/{id}/bids - List bids for order
 POST /orders/{id}/assign - Manager assigns delivery
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
+from app.models import Account, Order, OrderedDish, Dish, Bid, Transaction, DeliveryRating, VIPHistory
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
@@ -241,15 +245,11 @@ async def create_order(
         )
     
     # === Transactional order creation ===
-    # Configuration for bidding deadline
-    BIDDING_DURATION_MINUTES = 30
-    
     try:
-        now = datetime.now(timezone.utc)
-        # Create the order with bidding deadline
+        # Create the order
         order = Order(
             accountID=current_user.ID,
-            dateTime=now.isoformat(),
+            dateTime=datetime.now(timezone.utc).isoformat(),
             finalCost=final_cost,
             status="paid",  # Immediately paid since deposit is sufficient
             note=order_request.note,
@@ -257,8 +257,7 @@ async def create_order(
             delivery_fee=delivery_fee,
             subtotal_cents=subtotal_cents,
             discount_cents=discount_cents,
-            free_delivery_used=free_delivery_used,
-            bidding_closes_at=(now + timedelta(minutes=BIDDING_DURATION_MINUTES)).isoformat()
+            free_delivery_used=free_delivery_used
         )
         db.add(order)
         db.flush()  # Get order.id
@@ -288,22 +287,52 @@ async def create_order(
         if free_delivery_used:
             current_user.free_delivery_credits -= 1
         
-        # Track total spending for VIP eligibility
+        # === FIX 1: Track total spending (includes discount and delivery) ===
+        # This counts toward VIP eligibility threshold
         current_user.total_spent_cents = (current_user.total_spent_cents or 0) + final_cost
         
-        # Increment completed orders count for VIP
-        # (We count 'paid' orders towards free delivery credits)
-        if is_vip:
-            current_user.completed_orders_count += 1
-            # Check if VIP earns a new free delivery credit
+        # === FIX 2: Increment completed orders count IMMEDIATELY ===
+        # Count 'paid' orders toward VIP metrics since payment was successful
+        current_user.completed_orders_count = (current_user.completed_orders_count or 0) + 1
+        
+        # === FIX 3: Check for VIP upgrade after order ===
+        # VIP Configuration (same as customer.py)
+        VIP_SPEND_THRESHOLD_CENTS = 10000  # $100
+        VIP_ORDERS_THRESHOLD = 3  # Or 3 orders
+        
+        # Check if customer should be upgraded to VIP
+        if current_user.type == "customer":
+            meets_spend_threshold = current_user.total_spent_cents >= VIP_SPEND_THRESHOLD_CENTS
+            meets_orders_threshold = current_user.completed_orders_count >= VIP_ORDERS_THRESHOLD
+            
+            if meets_spend_threshold or meets_orders_threshold:
+                # Upgrade to VIP!
+                vip_entry = VIPHistory(
+                    account_id=current_user.ID,
+                    previous_type=current_user.type,
+                    new_type='vip',
+                    reason=f"Spent ${current_user.total_spent_cents/100:.2f}" if meets_spend_threshold else f"Completed {current_user.completed_orders_count} orders",
+                    changed_by=None,  # Automatic
+                    created_at=datetime.now(timezone.utc).isoformat()
+                )
+                db.add(vip_entry)
+                
+                current_user.previous_type = current_user.type
+                current_user.type = 'vip'
+                current_user.free_delivery_credits = 0  # Reset credits
+                
+                logger.info(f"Customer {current_user.email} upgraded to VIP! Spent: ${current_user.total_spent_cents/100:.2f}, Orders: {current_user.completed_orders_count}")
+        
+        # === FIX 4: Grant free delivery credits for VIPs ===
+        # Every 3 orders, VIP gets 1 free delivery
+        if current_user.type == 'vip':
             if current_user.completed_orders_count % VIP_FREE_DELIVERY_EVERY_N_ORDERS == 0:
                 current_user.free_delivery_credits += 1
-        else:
-            # Also track for non-VIP customers for upgrade eligibility
-            current_user.completed_orders_count += 1
+                logger.info(f"VIP {current_user.email} earned a free delivery credit! Total: {current_user.free_delivery_credits}")
         
         db.commit()
         db.refresh(order)
+        db.refresh(current_user)
         
         # Build response with dish details
         ordered_dishes_response = []
@@ -317,7 +346,7 @@ async def create_order(
             ))
         
         return OrderCreateResponse(
-            message="Order created successfully",
+            message="Order created successfully" + (" - Congratulations! You are now a VIP!" if current_user.type == 'vip' and current_user.previous_type == 'customer' else ""),
             order=OrderResponse(
                 id=order.id,
                 accountID=order.accountID,

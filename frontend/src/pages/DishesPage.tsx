@@ -20,6 +20,9 @@ export default function DishesPage() {
   const orderBy = searchParams.get('order_by') || 'popular';
   const [searchInput, setSearchInput] = useState(search);
 
+  // ✅ Helper to check if user can order
+  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+
   useEffect(() => {
     fetchDishes();
   }, [page, search, orderBy]);
@@ -71,7 +74,6 @@ export default function DishesPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Determine the empty message based on the current sort option
   const getEmptyMessage = () => {
     if (orderBy === 'past_orders') {
       if (!user) {
@@ -92,13 +94,10 @@ export default function DishesPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">Menu</h1>
 
-        {/* Search and Filter Bar */}
         <div className="flex flex-col md:flex-row gap-4">
-          {/* Search */}
           <form onSubmit={handleSearch} className="flex-1">
             <div className="relative">
               <input
@@ -117,7 +116,6 @@ export default function DishesPage() {
             </div>
           </form>
 
-          {/* Sort */}
           <select
             value={orderBy}
             onChange={(e) => handleOrderChange(e.target.value)}
@@ -131,7 +129,6 @@ export default function DishesPage() {
           </select>
         </div>
 
-        {/* Results info */}
         {data && (
           <div className="mt-4 text-gray-600">
             {orderBy === 'past_orders' && data.total === 0 ? (
@@ -147,22 +144,20 @@ export default function DishesPage() {
         )}
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800 mb-6">
           {error}
         </div>
       )}
 
-      {/* Dishes Grid */}
+      {/* ✅ FIXED: Allow both customers and VIPs to add to cart */}
       <DishGrid
         dishes={data?.dishes || []}
         loading={loading}
         emptyMessage={getEmptyMessage()}
-        onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
+        onAddToCart={isCustomerOrVip ? handleAddToCart : undefined}
       />
 
-      {/* Pagination */}
       {data && data.total_pages > 1 && (
         <div className="mt-12 flex justify-center items-center gap-2">
           <button

@@ -29,10 +29,14 @@ export default function CartPage() {
   const [vipInfo, setVipInfo] = useState<VIPInfo | null>(null);
   const [, setLoadingVip] = useState(true);
 
+  // ✅ Helper to check if user can order
+  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+
   // Fetch VIP status
   useEffect(() => {
     const fetchVipStatus = async () => {
-      if (!user || user.type !== 'customer') {
+      // ✅ FIXED: Check for customer OR vip
+      if (!user || !isCustomerOrVip) {
         setLoadingVip(false);
         return;
       }
@@ -53,7 +57,7 @@ export default function CartPage() {
     };
 
     fetchVipStatus();
-  }, [user]);
+  }, [user, isCustomerOrVip]);
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,7 +161,8 @@ export default function CartPage() {
     }
   };
 
-  if (!user || user.type !== 'customer') {
+  // ✅ FIXED: Check for customer OR vip
+  if (!user || !isCustomerOrVip) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">

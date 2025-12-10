@@ -41,6 +41,9 @@ function Navigation() {
   const { user, logout, warningInfo, dismissWarning } = useAuth();
   const { totalItems } = useCart();
 
+  // ✅ Helper to check if user is customer or VIP
+  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+
   return (
     <nav className="bg-white shadow-md sticky top-0 z-40 animate-slide-down">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -96,8 +99,8 @@ function Navigation() {
               </Link>
             )}
 
-            {/* Customer Navigation */}
-            {user?.type === 'customer' && (
+            {/* ✅ Customer & VIP Navigation */}
+            {isCustomerOrVip && (
               <>
                 <Link to="/customer/dashboard" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
                   <span className="hidden sm:inline">My Dashboard</span>
@@ -120,8 +123,8 @@ function Navigation() {
               <span className="sm:hidden text-xl">💭</span>
             </Link>
 
-            {/* Cart (customers only) */}
-            {user?.type === 'customer' && (
+            {/* ✅ Cart (customers & VIPs) */}
+            {isCustomerOrVip && (
               <Link to="/cart" className="relative text-gray-700 hover:text-primary-600 transition-colors">
                 <span className="text-2xl">🛒</span>
                 {totalItems > 0 && (
@@ -184,6 +187,9 @@ function AppRoutes() {
     );
   }
 
+  // ✅ Helper to check if user is customer or VIP
+  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+
   return (
     <Routes>
       {/* Public Routes */}
@@ -207,29 +213,29 @@ function AppRoutes() {
         element={user ? <Navigate to="/" replace /> : <RegisterManagerPage />}
       />
 
-      {/* Customer Routes */}
+      {/* ✅ Customer & VIP Routes */}
       <Route
         path="/cart"
         element={
-          user?.type === 'customer' ? <CartPage /> : <Navigate to="/auth/login" replace />
+          isCustomerOrVip ? <CartPage /> : <Navigate to="/auth/login" replace />
         }
       />
       <Route
         path="/customer/dashboard"
         element={
-          user?.type === 'customer' ? <CustomerDashboard /> : <Navigate to="/auth/login" replace />
+          isCustomerOrVip ? <CustomerDashboard /> : <Navigate to="/auth/login" replace />
         }
       />
       <Route
         path="/customer/orders"
         element={
-          user?.type === 'customer' ? <OrderHistoryPage /> : <Navigate to="/auth/login" replace />
+          isCustomerOrVip ? <OrderHistoryPage /> : <Navigate to="/auth/login" replace />
         }
       />
       <Route
         path="/customer/transactions"
         element={
-          user?.type === 'customer' ? <TransactionsPage /> : <Navigate to="/auth/login" replace />
+          isCustomerOrVip ? <TransactionsPage /> : <Navigate to="/auth/login" replace />
         }
       />
 

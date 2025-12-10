@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ThumbsUp, ThumbsDown } from 'lucide-react';
 import apiClient from '../lib/api-client';
 import toast from 'react-hot-toast';
 
@@ -9,6 +9,8 @@ interface ReviewDishModalProps {
   dishId: number;
   dishName: string;
   orderId: number;
+  chefId: number | null;
+  chefName: string | null;
   onReviewSubmitted: () => void;
 }
 
@@ -18,11 +20,15 @@ export default function ReviewDishModal({
   dishId,
   dishName,
   orderId,
+  chefId,
+  chefName,
   onReviewSubmitted
 }: ReviewDishModalProps) {
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
+  const [feedbackType, setFeedbackType] = useState<'none' | 'compliment' | 'complaint'>('none');
+  const [feedbackText, setFeedbackText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,10 +42,16 @@ export default function ReviewDishModal({
       return;
     }
 
+    if (feedbackType !== 'none' && !feedbackText.trim()) {
+      setError(`Please provide details for your ${feedbackType}`);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
+      // Submit dish review
       await apiClient.post('/reviews/dish', {
         dish_id: dishId,
         order_id: orderId,
@@ -47,7 +59,21 @@ export default function ReviewDishModal({
         review_text: reviewText.trim() || null
       });
 
-      toast.success(`Review submitted for ${dishName}!`);
+      // Submit complaint/compliment if selected
+      if (feedbackType !== 'none' && chefId) {
+        await apiClient.post('/complaints', {
+          about_user_id: chefId,
+          order_id: orderId,
+          type: feedbackType,
+          text: feedbackText.trim()
+        });
+      }
+
+      toast.success(
+        feedbackType === 'none' 
+          ? `Review submitted for ${dishName}!`
+          : `Review and ${feedbackType} submitted!`
+      );
       onReviewSubmitted();
       handleClose();
     } catch (err: any) {
@@ -63,13 +89,15 @@ export default function ReviewDishModal({
     setRating(0);
     setHoverRating(0);
     setReviewText('');
+    setFeedbackType('none');
+    setFeedbackText('');
     setError('');
     onClose();
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">Rate Dish</h2>
@@ -87,6 +115,9 @@ export default function ReviewDishModal({
           {/* Dish Name */}
           <div className="mb-6">
             <p className="text-lg font-semibold text-gray-900">{dishName}</p>
+            {chefName && (
+              <p className="text-sm text-gray-600 mt-1">Chef: {chefName}</p>
+            )}
             <p className="text-sm text-gray-500">How would you rate this dish?</p>
           </div>
 
@@ -142,7 +173,7 @@ export default function ReviewDishModal({
               value={reviewText}
               onChange={(e) => setReviewText(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-              rows={4}
+              rows={3}
               placeholder="Tell us what you thought about this dish..."
               maxLength={500}
             />
@@ -150,6 +181,88 @@ export default function ReviewDishModal({
               {reviewText.length}/500 characters
             </p>
           </div>
+
+          {/* Chef Feedback Section */}
+          {chefId && (
+            <div className="mb-6 border-t pt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Feedback for Chef {chefName ? `(${chefName})` : ''}
+              </label>
+              
+              {/* Feedback Type Buttons */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setFeedbackType('none')}
+                  className={`py-3 px-4 rounded-lg border-2 transition-all ${
+                    feedbackType === 'none'
+                      ? 'border-gray-400 bg-gray-50 font-semibold'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  No Feedback
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setFeedbackType('compliment')}
+                  className={`py-3 px-4 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
+                    feedbackType === 'compliment'
+                      ? 'border-green-500 bg-green-50 text-green-700 font-semibold'
+                      : 'border-gray-200 hover:border-green-300'
+                  }`}
+                >
+                  <ThumbsUp size={18} />
+                  Compliment
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setFeedbackType('complaint')}
+                  className={`py-3 px-4 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
+                    feedbackType === 'complaint'
+                      ? 'border-red-500 bg-red-50 text-red-700 font-semibold'
+                      : 'border-gray-200 hover:border-red-300'
+                  }`}
+                >
+                  <ThumbsDown size={18} />
+                  Complaint
+                </button>
+              </div>
+
+              {/* Feedback Text Area */}
+              {feedbackType !== 'none' && (
+                <div className="mt-4">
+                  <textarea
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    className={`w-full border rounded-lg px-4 py-3 focus:ring-2 focus:border-transparent resize-none ${
+                      feedbackType === 'compliment'
+                        ? 'border-green-300 focus:ring-green-500'
+                        : 'border-red-300 focus:ring-red-500'
+                    }`}
+                    rows={4}
+                    placeholder={
+                      feedbackType === 'compliment'
+                        ? 'What did the chef do particularly well?'
+                        : 'What issue would you like to report about the chef?'
+                    }
+                    maxLength={500}
+                    required={feedbackType !== 'none'}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {feedbackText.length}/500 characters
+                  </p>
+                  <p className="text-xs text-gray-600 mt-2">
+                    {feedbackType === 'compliment' 
+                      ? '✨ Compliments help chefs improve and can offset complaints'
+                      : '⚠️ Complaints will be reviewed by management'
+                    }
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../lib/api-client';
@@ -7,7 +7,8 @@ import { CustomerDashboardResponse, DepositResponse } from '../../types/api';
 import { DishCard, RatingStars } from '../../components';
 
 export default function CustomerDashboard() {
-  const { refreshProfile } = useAuth();
+  const { user, refreshProfile } = useAuth();
+  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<CustomerDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -16,12 +17,22 @@ export default function CustomerDashboard() {
 
   useEffect(() => {
     fetchDashboard();
+    // Also refresh user profile to get latest VIP status
+    refreshProfile();
   }, []);
 
   const fetchDashboard = async () => {
     try {
       const response = await apiClient.get<CustomerDashboardResponse>('/customer/dashboard');
       setDashboard(response.data);
+      
+      // Check if user just became VIP and show celebration
+      if (response.data.vip_status.is_vip && !user?.type.includes('vip')) {
+        toast.success('🎉 Congratulations! You are now a VIP member!', {
+          duration: 5000,
+          icon: '👑'
+        });
+      }
     } catch (err: any) {
       setError('Failed to load dashboard');
       console.error(err);
@@ -74,6 +85,7 @@ export default function CustomerDashboard() {
   }
 
   const { vip_status } = dashboard;
+  const isVIP = vip_status.is_vip || user?.type === 'vip';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -82,6 +94,41 @@ export default function CustomerDashboard() {
         <h1 className="text-4xl font-bold text-gray-900">Customer Dashboard</h1>
         <p className="text-gray-600 mt-2">Welcome back, {dashboard.email}</p>
       </div>
+
+      {/* VIP Upgrade Banner (if just became eligible or recently upgraded) */}
+      {vip_status.vip_eligible && !isVIP && (
+        <div className="mb-8 bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-300 rounded-xl p-6 shadow-lg">
+          <div className="flex items-center gap-4">
+            <span className="text-5xl">👑</span>
+            <div className="flex-1">
+              <h3 className="text-2xl font-bold text-amber-800 mb-2">
+                You're Eligible for VIP Status!
+              </h3>
+              <p className="text-amber-700 mb-3">{vip_status.vip_reason}</p>
+              <p className="text-sm text-amber-600">
+                Complete your next order to unlock VIP benefits: 5% discount on food + free delivery credits!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Just Upgraded to VIP Banner */}
+      {isVIP && vip_status.completed_orders === 3 && (
+        <div className="mb-8 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-6 shadow-lg">
+          <div className="flex items-center gap-4">
+            <span className="text-5xl">🎉</span>
+            <div className="flex-1">
+              <h3 className="text-2xl font-bold text-purple-800 mb-2">
+                Welcome to VIP Status!
+              </h3>
+              <p className="text-purple-700">
+                You now enjoy 5% discount on all food and earn free delivery credits every 3 orders!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Stats Grid */}
       <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -118,12 +165,12 @@ export default function CustomerDashboard() {
         </div>
 
         {/* VIP Status Card */}
-        <div className={`rounded-xl shadow-md p-6 ${vip_status.is_vip ? 'bg-gradient-to-br from-yellow-50 to-amber-100 border-2 border-yellow-400' : 'bg-white'}`}>
+        <div className={`rounded-xl shadow-md p-6 ${isVIP ? 'bg-gradient-to-br from-yellow-50 to-amber-100 border-2 border-yellow-400' : 'bg-white'}`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-700">VIP Status</h3>
-            <span className="text-3xl">{vip_status.is_vip ? '👑' : '⭐'}</span>
+            <span className="text-3xl">{isVIP ? '👑' : '⭐'}</span>
           </div>
-          {vip_status.is_vip ? (
+          {isVIP ? (
             <>
               <p className="text-2xl font-bold text-amber-600 mb-2">VIP Member</p>
               <div className="space-y-1 text-sm text-gray-600">
@@ -137,12 +184,28 @@ export default function CustomerDashboard() {
           ) : (
             <>
               <p className="text-lg font-medium text-gray-600 mb-2">
-                {vip_status.vip_eligible ? 'Eligible for VIP!' : 'Regular Customer'}
+                {vip_status.vip_eligible ? '🎯 Almost VIP!' : 'Regular Customer'}
               </p>
               <p className="text-sm text-gray-500 mb-3">{vip_status.vip_reason}</p>
               <div className="text-sm text-gray-600 space-y-1">
                 <p>💵 Spent: {vip_status.total_spent_formatted}</p>
                 <p>📦 Orders: {vip_status.completed_orders}</p>
+              </div>
+              {/* Progress to VIP */}
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Progress to VIP</span>
+                  <span>{Math.min(100, Math.round((vip_status.completed_orders / 3) * 100))}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-gradient-to-r from-amber-400 to-yellow-500 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, (vip_status.completed_orders / 3) * 100)}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {3 - vip_status.completed_orders} more orders to VIP status!
+                </p>
               </div>
             </>
           )}
@@ -157,7 +220,10 @@ export default function CustomerDashboard() {
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-gray-600">Account Type</span>
-              <span className="font-medium capitalize">{dashboard.account_type}</span>
+              <span className="font-medium capitalize flex items-center gap-1">
+                {isVIP && <span>👑</span>}
+                {dashboard.account_type}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Total Orders</span>
@@ -199,6 +265,7 @@ export default function CustomerDashboard() {
               </p>
               <p className="text-primary-600 font-bold">
                 {dashboard.most_popular_dish.cost_formatted}
+                {isVIP && <span className="text-xs text-green-600 ml-1">(5% off for VIP!)</span>}
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <RatingStars rating={dashboard.most_popular_dish.average_rating} />
@@ -233,6 +300,7 @@ export default function CustomerDashboard() {
               </p>
               <p className="text-primary-600 font-bold">
                 {dashboard.highest_rated_dish.cost_formatted}
+                {isVIP && <span className="text-xs text-green-600 ml-1">(5% off for VIP!)</span>}
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <RatingStars rating={dashboard.highest_rated_dish.average_rating} />
@@ -327,7 +395,7 @@ export default function CustomerDashboard() {
                       </Link>
                       {order.can_review && (
                         <Link
-                          to={`/orders/${order.id}/review`}
+                          to={`/orders/history`}
                           className="text-green-600 hover:underline text-sm ml-3"
                         >
                           Review

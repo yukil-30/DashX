@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../lib/api-client';
 import ReviewDishModal from '../../components/ReviewDishModal';
-import { Star, Package, Truck, CheckCircle, Clock } from 'lucide-react';
+import { Star, Package, Truck, CheckCircle, ChefHat } from 'lucide-react';
 
 interface OrderItem {
   dish_id: number;
   dish_name: string;
   dish_picture: string | null;
+  dish_chef_id: number | null;
+  dish_chef_name: string | null;
   quantity: number;
   unit_price_cents: number;
   can_review: boolean;
@@ -57,6 +59,8 @@ export default function OrderHistoryPage() {
     dishId: number;
     dishName: string;
     orderId: number;
+    chefId: number | null;
+    chefName: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -81,7 +85,53 @@ export default function OrderHistoryPage() {
         `/orders/history/me?${params}`
       );
       
-      setOrders(response.data.orders);
+      // Enrich orders with chef info
+      const enrichedOrders = await Promise.all(
+        response.data.orders.map(async (order) => {
+          const enrichedItems = await Promise.all(
+            order.items.map(async (item) => {
+              try {
+                // Fetch dish details to get chef info
+                const dishResponse = await apiClient.get(`/dishes/${item.dish_id}`);
+                const dish = dishResponse.data;
+                
+                let chefName = null;
+                if (dish.chefID) {
+                  try {
+                    const profileResponse = await apiClient.get(`/profiles/users/${dish.chefID}`);
+                    chefName = profileResponse.data.display_name || profileResponse.data.email;
+                  } catch (err) {
+                    console.error('Failed to fetch chef profile:', err);
+                  }
+                }
+                
+                return {
+                  ...item,
+                  dish_chef_id: dish.chefID,
+                  dish_chef_name: chefName,
+                  // UPDATED: Allow reviews on paid orders, not just delivered
+                  can_review: ['paid', 'assigned', 'in_transit', 'delivered'].includes(order.status) && !item.has_reviewed
+                };
+              } catch (err) {
+                console.error('Failed to fetch dish details:', err);
+                return {
+                  ...item,
+                  dish_chef_id: null,
+                  dish_chef_name: null,
+                  can_review: ['paid', 'assigned', 'in_transit', 'delivered'].includes(order.status) && !item.has_reviewed
+                };
+              }
+            })
+          );
+          
+          return {
+            ...order,
+            items: enrichedItems
+          };
+        })
+      );
+      
+      setOrders(enrichedOrders);
       setTotal(response.data.total);
     } catch (err: any) {
       setError('Failed to load order history');
@@ -91,8 +141,14 @@ export default function OrderHistoryPage() {
     }
   };
 
-  const handleReviewClick = (dishId: number, dishName: string, orderId: number) => {
-    setSelectedDish({ dishId, dishName, orderId });
+  const handleReviewClick = (
+    dishId: number, 
+    dishName: string, 
+    orderId: number, 
+    chefId: number | null, 
+    chefName: string | null
+  ) => {
+    setSelectedDish({ dishId, dishName, orderId, chefId, chefName });
     setReviewModalOpen(true);
   };
 
@@ -193,16 +249,6 @@ export default function OrderHistoryPage() {
         </div>
       )}
 
-      {/* Debug: Show what data we're receiving */}
-      {!loading && !error && orders.length > 0 && (
-        <div className="mb-4 p-4 bg-blue-50 rounded-lg text-xs">
-          <details>
-            <summary className="cursor-pointer font-semibold">Debug: View Raw Order Data</summary>
-            <pre className="mt-2 overflow-auto">{JSON.stringify(orders[0], null, 2)}</pre>
-          </details>
-        </div>
-      )}
-
       {!loading && !error && orders.length > 0 && (
         <div className="space-y-6">
           {orders.map((order) => (
@@ -282,6 +328,12 @@ export default function OrderHistoryPage() {
                         <p className="text-sm text-gray-600">
                           Quantity: {item.quantity} × ${(item.unit_price_cents / 100).toFixed(2)}
                         </p>
+                        {item.dish_chef_name && (
+                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                            <ChefHat size={14} />
+                            Chef: {item.dish_chef_name}
+                          </p>
+                        )}
                       </div>
 
                       {/* Review Button */}
@@ -291,24 +343,24 @@ export default function OrderHistoryPage() {
                             <CheckCircle size={16} />
                             Reviewed
                           </span>
+                        ) : item.can_review ? (
+                          <button
+                            onClick={() => handleReviewClick(
+                              item.dish_id, 
+                              item.dish_name, 
+                              order.id,
+                              item.dish_chef_id,
+                              item.dish_chef_name
+                            )}
+                            className="flex items-center gap-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+                          >
+                            <Star size={16} />
+                            Review
+                          </button>
                         ) : (
-                          // TEMPORARY: Allow reviews on 'paid' status for testing
-                          // TODO: Change back to only allow reviews when order.status === 'delivered'
-                          // Original condition: item.can_review
-                          (order.status === 'paid' || order.status === 'delivered') && !item.has_reviewed ? (
-                            <button
-                              onClick={() => handleReviewClick(item.dish_id, item.dish_name, order.id)}
-                              className="flex items-center gap-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
-                            >
-                              <Star size={16} />
-                              Review
-                            </button>
-                          ) : (
-                            <span className="text-sm text-gray-400 flex items-center gap-1">
-                              <Clock size={14} />
-                              {order.status === 'delivered' ? 'Already reviewed' : 'Complete order to review'}
-                            </span>
-                          )
+                          <span className="text-sm text-gray-400">
+                            Review available after payment
+                          </span>
                         )}
                       </div>
                     </div>
@@ -392,6 +444,8 @@ export default function OrderHistoryPage() {
           dishId={selectedDish.dishId}
           dishName={selectedDish.dishName}
           orderId={selectedDish.orderId}
+          chefId={selectedDish.chefId}
+          chefName={selectedDish.chefName}
           onReviewSubmitted={handleReviewSubmitted}
         />
       )}

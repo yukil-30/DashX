@@ -26,6 +26,9 @@ export default function DishDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // ✅ Helper to check if user can order
+  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+
   useEffect(() => {
     if (id) {
       fetchDish();
@@ -88,7 +91,6 @@ export default function DishDetailPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Back button */}
       <button
         onClick={() => navigate(-1)}
         className="mb-6 text-gray-600 hover:text-gray-900 flex items-center gap-2"
@@ -97,7 +99,6 @@ export default function DishDetailPage() {
       </button>
 
       <div className="grid md:grid-cols-2 gap-12">
-        {/* Image */}
         <div>
           <ImageCarousel
             images={dish.picture ? [dish.picture] : []}
@@ -105,11 +106,9 @@ export default function DishDetailPage() {
           />
         </div>
 
-        {/* Details */}
         <div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">{dish.name}</h1>
 
-          {/* Rating */}
           <div className="flex items-center gap-4 mb-6">
             <RatingStars rating={dish.average_rating} size="lg" />
             <span className="text-gray-600">
@@ -117,14 +116,12 @@ export default function DishDetailPage() {
             </span>
           </div>
 
-          {/* Price */}
           <div className="mb-6">
             <span className="text-4xl font-bold text-primary-600">
               {dish.cost_formatted}
             </span>
           </div>
 
-          {/* Description */}
           {dish.description && (
             <div className="mb-8">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
@@ -132,8 +129,8 @@ export default function DishDetailPage() {
             </div>
           )}
 
-          {/* Add to Cart */}
-          {user?.type === 'customer' && (
+          {/* ✅ FIXED: Allow both customers and VIPs to add to cart */}
+          {isCustomerOrVip && (
             <div className="mb-8">
               <div className="flex items-center gap-4 mb-4">
                 <label htmlFor="quantity" className="text-gray-700 font-medium">
@@ -181,7 +178,6 @@ export default function DishDetailPage() {
             </div>
           )}
 
-          {/* Chef Info */}
           {dish.chefID && (
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Chef Information</h3>
@@ -191,7 +187,6 @@ export default function DishDetailPage() {
         </div>
       </div>
 
-      {/* Reviews Section */}
       <div className="mt-16 border-t pt-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-8">
           Customer Reviews ({reviewsTotal})
