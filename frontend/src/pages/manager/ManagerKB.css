@@ -573,6 +573,88 @@
   background: #fef2f2;
 }
 
+/* Contribution review specific styles */
+.review-btn.approve {
+  border-color: #22c55e;
+  color: #16a34a;
+}
+
+.review-btn.approve:hover {
+  background: #f0fdf4;
+}
+
+.review-btn.reject {
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+.review-btn.reject:hover {
+  background: #fef2f2;
+}
+
+.confidence-slider {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.confidence-value {
+  font-weight: 600;
+  color: #7c3aed;
+}
+
+.rejection-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  min-height: 80px;
+  resize: vertical;
+}
+
+.rejection-input:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.status-message {
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.status-message.approved {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.status-message.rejected {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.status-message .rejection-reason {
+  display: block;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
+.badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .manager-kb {

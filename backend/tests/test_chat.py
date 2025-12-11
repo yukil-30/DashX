@@ -6,6 +6,7 @@ Covers:
 - Rating system (including flagging)
 - Manager review of flagged entries
 - KB CRUD operations
+- KB contributions (customer submissions)
 - Caching behavior
 """
 
@@ -809,5 +810,497 @@ class TestChatFlow:
             
             assert review_response.status_code == 200
             assert mock_chat.reviewed is True
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ============================================================
+# KB Contribution Tests
+# ============================================================
+
+def create_mock_contribution(
+    id=1,
+    submitter_id=1,
+    question="How do I track my order?",
+    answer="You can track your order through the app.",
+    keywords="track,order,status",
+    status="pending",
+    rejection_reason=None,
+    reviewed_by=None,
+    reviewed_at=None,
+    created_kb_entry_id=None
+):
+    """Create a mock KB contribution"""
+    mock = MagicMock()
+    mock.id = id
+    mock.submitter_id = submitter_id
+    mock.question = question
+    mock.answer = answer
+    mock.keywords = keywords
+    mock.status = status
+    mock.rejection_reason = rejection_reason
+    mock.reviewed_by = reviewed_by
+    mock.reviewed_at = reviewed_at
+    mock.created_kb_entry_id = created_kb_entry_id
+    mock.created_at = datetime.now(timezone.utc).isoformat()
+    mock.updated_at = mock.created_at
+    return mock
+
+
+class TestKBContributions:
+    """Test KB contribution endpoints"""
+
+    def test_submit_contribution_requires_auth(self):
+        """Test submitting KB contribution requires authentication"""
+        # Clear any overrides
+        app.dependency_overrides.clear()
+        
+        response = client.post("/chat/kb/contribute", json={
+            "question": "How do I track my order?",
+            "answer": "You can track your order through the app."
+        })
+        
+        # Should fail with 401 (no auth)
+        assert response.status_code == 401
+
+    def test_submit_contribution_success(self):
+        """Test customer can submit KB contribution"""
+        mock_user = create_mock_user(type="customer")
+        mock_db = create_mock_db()
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/kb/contribute", json={
+                "question": "How do I track my order?",
+                "answer": "You can track your order through the DashX app by going to Order History.",
+                "keywords": "track,order,status"
+            })
+            
+            assert response.status_code == 201
+            data = response.json()
+            assert data["status"] == "pending"
+            assert data["submitter_id"] == mock_user.ID
+            assert "track" in data["question"].lower()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_submit_contribution_vip(self):
+        """Test VIP can submit KB contribution"""
+        mock_vip = create_mock_user(ID=2, type="vip")
+        mock_db = create_mock_db()
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_vip
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/kb/contribute", json={
+                "question": "What are the VIP benefits?",
+                "answer": "VIP members get free delivery credits and discounts."
+            })
+            
+            assert response.status_code == 201
+            assert response.json()["status"] == "pending"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_list_contributions_requires_manager(self):
+        """Test listing contributions requires manager role"""
+        mock_user = create_mock_user(type="customer")
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        
+        try:
+            response = client.get("/chat/kb/contributions")
+            assert response.status_code == 403
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_list_contributions_success(self):
+        """Test manager can list KB contributions"""
+        mock_manager = create_mock_manager()
+        mock_contribution = create_mock_contribution()
+        mock_user = create_mock_user()
+        mock_db = create_mock_db()
+        
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            if 'KBContribution' in model_name:
+                mock_query.filter.return_value = mock_query
+                mock_query.count.return_value = 1
+                mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_contribution]
+            elif 'Account' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_user
+            return mock_query
+        
+        mock_db.query.side_effect = query_side_effect
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_manager
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.get("/chat/kb/contributions")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 1
+            assert len(data["contributions"]) == 1
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_approve_contribution(self):
+        """Test manager can approve KB contribution"""
+        mock_manager = create_mock_manager()
+        mock_contribution = create_mock_contribution(status="pending")
+        mock_db = create_mock_db()
+        
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_contribution
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_manager
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/kb/contributions/1/review", json={
+                "action": "approve",
+                "confidence": 0.85
+            })
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "approved"
+            assert data["created_kb_entry_id"] is not None or mock_contribution.status == "approved"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_reject_contribution(self):
+        """Test manager can reject KB contribution"""
+        mock_manager = create_mock_manager()
+        mock_contribution = create_mock_contribution(status="pending")
+        mock_db = create_mock_db()
+        
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_contribution
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_manager
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/kb/contributions/1/review", json={
+                "action": "reject",
+                "rejection_reason": "Answer is incorrect"
+            })
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "rejected"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_reject_requires_reason(self):
+        """Test rejection requires a reason"""
+        mock_manager = create_mock_manager()
+        mock_contribution = create_mock_contribution(status="pending")
+        mock_db = create_mock_db()
+        
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_contribution
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_manager
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/kb/contributions/1/review", json={
+                "action": "reject"
+                # No rejection_reason
+            })
+            
+            assert response.status_code == 400
+            assert "reason" in response.json()["detail"].lower()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_get_my_contributions(self):
+        """Test user can see their own contributions"""
+        mock_user = create_mock_user()
+        mock_contribution = create_mock_contribution(submitter_id=mock_user.ID)
+        mock_db = create_mock_db()
+        
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.count.return_value = 1
+        mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_contribution]
+        mock_db.query.return_value = mock_query
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.get("/chat/kb/contributions/mine")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 1
+            assert len(data["contributions"]) == 1
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_cannot_review_already_reviewed(self):
+        """Test cannot review already approved/rejected contribution"""
+        mock_manager = create_mock_manager()
+        mock_contribution = create_mock_contribution(status="approved")  # Already approved
+        mock_db = create_mock_db()
+        
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_contribution
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_manager
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/kb/contributions/1/review", json={
+                "action": "reject",
+                "rejection_reason": "Trying to reject approved"
+            })
+            
+            assert response.status_code == 400
+            assert "already" in response.json()["detail"].lower()
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ============================================================
+# KB Search and LLM Fallback Tests
+# ============================================================
+
+class TestKBSearchAndLLMFallback:
+    """Test KB-first search with LLM fallback behavior"""
+
+    def test_kb_search_returns_match(self):
+        """Test that KB search returns matching entries"""
+        mock_user = create_mock_user()
+        mock_kb = create_mock_kb_entry(
+            question="What are your hours?",
+            answer="We are open 11am-10pm daily."
+        )
+        mock_db = create_mock_db()
+        
+        # Setup full-text search result
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = (
+            mock_kb.id, mock_kb.question, mock_kb.answer, mock_kb.keywords,
+            mock_kb.confidence, mock_kb.author_id, mock_kb.is_active,
+            mock_kb.created_at, 0.9  # High match score
+        )
+        mock_db.execute.return_value = mock_result
+        
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            if 'Account' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_user
+            elif 'KnowledgeBase' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_kb
+            return mock_query
+        
+        mock_db.query.side_effect = query_side_effect
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/query", json={
+                "user_id": 1,
+                "question": "What are your hours?"
+            })
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["source"] == "kb"
+            assert data["kb_entry_id"] == mock_kb.id
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_llm_fallback_when_no_kb_match(self):
+        """Test LLM is called when KB has no match"""
+        mock_user = create_mock_user()
+        mock_db = create_mock_db()
+        
+        # No KB match
+        mock_db.execute.return_value.fetchone.return_value = None
+        
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            if 'Account' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_user
+            else:
+                mock_query.filter.return_value.first.return_value = None
+            return mock_query
+        
+        mock_db.query.side_effect = query_side_effect
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        with patch('app.routers.chat.get_llm_adapter') as mock_get_adapter:
+            mock_adapter = MagicMock()
+            mock_adapter.name = "stub"
+            mock_adapter.generate = AsyncMock(return_value=LLMResponse(
+                answer="I can help with that unique question!",
+                model="stub",
+                confidence=0.5
+            ))
+            mock_get_adapter.return_value = mock_adapter
+            
+            try:
+                response = client.post("/chat/query", json={
+                    "user_id": 1,
+                    "question": "Very unique question not in KB"
+                })
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["source"] == "llm"
+                assert data["kb_entry_id"] is None
+                # Verify LLM was called
+                mock_adapter.generate.assert_called_once()
+            finally:
+                app.dependency_overrides.clear()
+
+    def test_chat_log_records_llm_response(self):
+        """Test that LLM responses are recorded in chat log"""
+        mock_user = create_mock_user()
+        mock_db = create_mock_db()
+        
+        mock_db.execute.return_value.fetchone.return_value = None
+        
+        added_objects = []
+        def track_add(obj):
+            added_objects.append(obj)
+        
+        mock_db.add = track_add
+        
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            if 'Account' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_user
+            else:
+                mock_query.filter.return_value.first.return_value = None
+            return mock_query
+        
+        mock_db.query.side_effect = query_side_effect
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        with patch('app.routers.chat.get_llm_adapter') as mock_get_adapter:
+            mock_adapter = MagicMock()
+            mock_adapter.name = "stub"
+            mock_adapter.generate = AsyncMock(return_value=LLMResponse(
+                answer="LLM generated answer",
+                model="test-model",
+                confidence=0.6
+            ))
+            mock_get_adapter.return_value = mock_adapter
+            
+            try:
+                response = client.post("/chat/query", json={
+                    "user_id": 1,
+                    "question": "Test question for logging"
+                })
+                
+                assert response.status_code == 200
+                
+                # Verify a chat log was added
+                assert len(added_objects) > 0
+                chat_log = added_objects[-1]
+                assert chat_log.source == "llm"
+                assert chat_log.question == "Test question for logging"
+                assert chat_log.answer == "LLM generated answer"
+            finally:
+                app.dependency_overrides.clear()
+
+
+# ============================================================
+# Flagged Response Tests
+# ============================================================
+
+class TestFlaggedResponses:
+    """Test flagged response behavior when rating=0"""
+
+    def test_rating_zero_flags_for_review(self):
+        """Test that rating 0 automatically flags for manager review"""
+        mock_chat = create_mock_chat_log(id=5, flagged=False)
+        mock_db = create_mock_db()
+        
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_chat
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/chat/5/rate", json={
+                "rating": 0
+            })
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["flagged"] is True
+            assert data["rating"] == 0
+            assert mock_chat.flagged is True
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_non_zero_rating_not_flagged(self):
+        """Test that ratings 1-5 are not flagged"""
+        mock_chat = create_mock_chat_log(id=5, flagged=False)
+        mock_db = create_mock_db()
+        
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_chat
+        
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            for rating in [1, 2, 3, 4, 5]:
+                mock_chat.flagged = False
+                response = client.post("/chat/5/rate", json={
+                    "rating": rating
+                })
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["flagged"] is False
+                assert data["rating"] == rating
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_flagged_appears_in_manager_list(self):
+        """Test that flagged chats appear in manager's flagged list"""
+        mock_manager = create_mock_manager()
+        mock_flagged = create_mock_chat_log(id=10, flagged=True, rating=0)
+        mock_user = create_mock_user()
+        mock_db = create_mock_db()
+        
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            if 'ChatLog' in model_name:
+                mock_query.filter.return_value = mock_query
+                mock_query.count.return_value = 1
+                mock_query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_flagged]
+            elif 'Account' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_user
+            return mock_query
+        
+        mock_db.query.side_effect = query_side_effect
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_manager
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.get("/chat/flagged")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 1
+            assert len(data["flagged_chats"]) == 1
+            assert data["flagged_chats"][0]["id"] == 10
+            assert data["flagged_chats"][0]["rating"] == 0
         finally:
             app.dependency_overrides.clear()

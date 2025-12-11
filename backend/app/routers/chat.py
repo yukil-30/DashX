@@ -31,13 +31,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text, func, or_
 
 from app.database import get_db
-from app.models import Account, KnowledgeBase, ChatLog
+from app.models import Account, KnowledgeBase, ChatLog, KBContribution
 from app.schemas import (
     ChatQueryRequest, ChatQueryResponse,
     ChatRateRequest, ChatRateResponse,
     KnowledgeBaseEntry, KnowledgeBaseCreateRequest, KnowledgeBaseUpdateRequest,
     FlaggedChatResponse, FlaggedChatListResponse,
-    ReviewFlaggedRequest, ReviewFlaggedResponse
+    ReviewFlaggedRequest, ReviewFlaggedResponse,
+    KBContributionCreateRequest, KBContributionResponse, KBContributionListResponse,
+    KBContributionReviewRequest, KBContributionReviewResponse
 )
 from app.auth import get_current_user, get_current_user_optional, require_manager
 from app.llm_adapter import get_llm_adapter, LLMResponse
@@ -689,3 +691,211 @@ async def get_chat_stats(
         "average_rating": float(avg_rating) if avg_rating else None,
         "total_kb_entries": total_kb
     }
+
+
+# ============================================================
+# KB Contribution Endpoints (Customer submissions)
+# ============================================================
+
+@router.post("/kb/contribute", response_model=KBContributionResponse, status_code=status.HTTP_201_CREATED)
+async def submit_kb_contribution(
+    request: KBContributionCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(get_current_user)
+):
+    """
+    Submit a knowledge base contribution for manager review.
+    Available to all authenticated users (customers, VIPs, etc.).
+    """
+    # Create contribution record
+    contribution = KBContribution(
+        submitter_id=current_user.ID,
+        question=request.question.strip(),
+        answer=request.answer.strip(),
+        keywords=request.keywords.strip() if request.keywords else None,
+        status="pending",
+        created_at=get_iso_now(),
+        updated_at=get_iso_now()
+    )
+    
+    db.add(contribution)
+    db.commit()
+    db.refresh(contribution)
+    
+    logger.info(f"KB contribution {contribution.id} submitted by user {current_user.ID}")
+    
+    return KBContributionResponse(
+        id=contribution.id,
+        submitter_id=contribution.submitter_id,
+        submitter_email=current_user.email,
+        question=contribution.question,
+        answer=contribution.answer,
+        keywords=contribution.keywords,
+        status=contribution.status,
+        rejection_reason=None,
+        reviewed_by=None,
+        reviewer_email=None,
+        reviewed_at=None,
+        created_kb_entry_id=None,
+        created_at=contribution.created_at
+    )
+
+
+@router.get("/kb/contributions", response_model=KBContributionListResponse)
+async def list_kb_contributions(
+    status_filter: Optional[str] = Query(None, description="Filter by status: pending, approved, rejected"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(require_manager)
+):
+    """
+    List KB contributions for manager review.
+    Manager only.
+    """
+    query = db.query(KBContribution)
+    
+    if status_filter:
+        query = query.filter(KBContribution.status == status_filter)
+    
+    total = query.count()
+    pending_count = db.query(KBContribution).filter(KBContribution.status == "pending").count()
+    
+    contributions = query.order_by(KBContribution.created_at.desc()).offset(skip).limit(limit).all()
+    
+    results = []
+    for c in contributions:
+        submitter = db.query(Account).filter(Account.ID == c.submitter_id).first()
+        reviewer = db.query(Account).filter(Account.ID == c.reviewed_by).first() if c.reviewed_by else None
+        
+        results.append(KBContributionResponse(
+            id=c.id,
+            submitter_id=c.submitter_id,
+            submitter_email=submitter.email if submitter else None,
+            question=c.question,
+            answer=c.answer,
+            keywords=c.keywords,
+            status=c.status,
+            rejection_reason=c.rejection_reason,
+            reviewed_by=c.reviewed_by,
+            reviewer_email=reviewer.email if reviewer else None,
+            reviewed_at=c.reviewed_at,
+            created_kb_entry_id=c.created_kb_entry_id,
+            created_at=c.created_at
+        ))
+    
+    return KBContributionListResponse(
+        contributions=results,
+        total=total,
+        pending_count=pending_count
+    )
+
+
+@router.get("/kb/contributions/mine")
+async def get_my_kb_contributions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(get_current_user)
+):
+    """
+    Get current user's KB contributions and their status.
+    """
+    query = db.query(KBContribution).filter(KBContribution.submitter_id == current_user.ID)
+    
+    total = query.count()
+    contributions = query.order_by(KBContribution.created_at.desc()).offset(skip).limit(limit).all()
+    
+    return {
+        "contributions": [
+            {
+                "id": c.id,
+                "question": c.question,
+                "answer": c.answer[:200] + "..." if len(c.answer) > 200 else c.answer,
+                "status": c.status,
+                "rejection_reason": c.rejection_reason,
+                "created_at": c.created_at
+            }
+            for c in contributions
+        ],
+        "total": total
+    }
+
+
+@router.post("/kb/contributions/{contribution_id}/review", response_model=KBContributionReviewResponse)
+async def review_kb_contribution(
+    contribution_id: int,
+    request: KBContributionReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(require_manager)
+):
+    """
+    Approve or reject a KB contribution.
+    Manager only.
+    
+    If approved, creates a new KnowledgeBase entry with the contribution content.
+    """
+    contribution = db.query(KBContribution).filter(KBContribution.id == contribution_id).first()
+    
+    if not contribution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"KB contribution {contribution_id} not found"
+        )
+    
+    if contribution.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Contribution is already {contribution.status}"
+        )
+    
+    created_kb_entry_id = None
+    
+    if request.action == "approve":
+        # Create new KB entry from contribution
+        kb_entry = KnowledgeBase(
+            question=contribution.question,
+            answer=contribution.answer,
+            keywords=contribution.keywords,
+            confidence=Decimal(str(request.confidence)),
+            author_id=contribution.submitter_id,
+            is_active=True,
+            created_at=get_iso_now(),
+            updated_at=get_iso_now()
+        )
+        db.add(kb_entry)
+        db.flush()  # Get the ID
+        
+        contribution.status = "approved"
+        contribution.created_kb_entry_id = kb_entry.id
+        created_kb_entry_id = kb_entry.id
+        
+        logger.info(
+            f"KB contribution {contribution_id} approved by manager {current_user.ID}, "
+            f"created KB entry {kb_entry.id}"
+        )
+    
+    elif request.action == "reject":
+        if not request.rejection_reason:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Rejection reason is required"
+            )
+        
+        contribution.status = "rejected"
+        contribution.rejection_reason = request.rejection_reason
+        
+        logger.info(f"KB contribution {contribution_id} rejected by manager {current_user.ID}")
+    
+    contribution.reviewed_by = current_user.ID
+    contribution.reviewed_at = get_iso_now()
+    contribution.updated_at = get_iso_now()
+    
+    db.commit()
+    
+    return KBContributionReviewResponse(
+        message=f"KB contribution {request.action}d successfully",
+        contribution_id=contribution_id,
+        status=contribution.status,
+        created_kb_entry_id=created_kb_entry_id
+    )

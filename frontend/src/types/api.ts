@@ -145,6 +145,47 @@ export interface ChatRateRequest {
   rating: number;
 }
 
+// KB Contribution Types
+export interface KBContributionCreateRequest {
+  question: string;
+  answer: string;
+  keywords?: string;
+}
+
+export interface KBContributionResponse {
+  id: number;
+  submitter_id: number;
+  submitter_email: string | null;
+  question: string;
+  answer: string;
+  keywords: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  reviewed_by: number | null;
+  reviewer_email: string | null;
+  reviewed_at: string | null;
+  created_kb_entry_id: number | null;
+  created_at: string | null;
+}
+
+export interface KBContributionListResponse {
+  contributions: KBContributionResponse[];
+  total: number;
+  pending_count: number;
+}
+
+export interface MyKBContributionsResponse {
+  contributions: {
+    id: number;
+    question: string;
+    answer: string;
+    status: 'pending' | 'approved' | 'rejected';
+    rejection_reason: string | null;
+    created_at: string | null;
+  }[];
+  total: number;
+}
+
 // Complaints & Compliments
 export interface Complaint {
   id: number;

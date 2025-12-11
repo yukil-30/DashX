@@ -798,6 +798,59 @@ class ReviewFlaggedResponse(BaseModel):
 
 
 # ============================================================
+# KB Contribution Schemas
+# ============================================================
+
+class KBContributionCreateRequest(BaseModel):
+    """Request to submit a KB contribution"""
+    question: str = Field(..., min_length=10, max_length=1000, description="The question/topic")
+    answer: str = Field(..., min_length=20, max_length=5000, description="The proposed answer")
+    keywords: Optional[str] = Field(None, max_length=500, description="Comma-separated keywords")
+
+
+class KBContributionResponse(BaseModel):
+    """Response for a KB contribution"""
+    id: int
+    submitter_id: int
+    submitter_email: Optional[str] = None
+    question: str
+    answer: str
+    keywords: Optional[str] = None
+    status: str  # pending, approved, rejected
+    rejection_reason: Optional[str] = None
+    reviewed_by: Optional[int] = None
+    reviewer_email: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    created_kb_entry_id: Optional[int] = None
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class KBContributionListResponse(BaseModel):
+    """List of KB contributions"""
+    contributions: List[KBContributionResponse]
+    total: int
+    pending_count: int
+
+
+class KBContributionReviewRequest(BaseModel):
+    """Request to approve or reject a KB contribution"""
+    action: Literal["approve", "reject"] = Field(..., description="approve or reject the contribution")
+    rejection_reason: Optional[str] = Field(None, max_length=500, description="Reason for rejection (required if rejecting)")
+    confidence: float = Field(default=0.8, ge=0, le=1, description="Confidence score for approved entries")
+
+
+class KBContributionReviewResponse(BaseModel):
+    """Response after reviewing a KB contribution"""
+    message: str
+    contribution_id: int
+    status: str
+    created_kb_entry_id: Optional[int] = None
+
+
+# ============================================================
 # Voice Report Schemas
 # ============================================================
 

@@ -42,19 +42,46 @@ interface FlaggedListResponse {
   total: number;
 }
 
+interface KBContribution {
+  id: number;
+  submitter_id: number;
+  submitter_email: string | null;
+  question: string;
+  answer: string;
+  keywords: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  reviewed_by: number | null;
+  reviewer_email: string | null;
+  reviewed_at: string | null;
+  created_kb_entry_id: number | null;
+  created_at: string | null;
+}
+
+interface ContributionListResponse {
+  contributions: KBContribution[];
+  total: number;
+  pending_count: number;
+}
+
 export function ManagerKB() {
   const [entries, setEntries] = useState<KBEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [flaggedCount, setFlaggedCount] = useState(0);
   const [flaggedChats, setFlaggedChats] = useState<FlaggedChat[]>([]);
+  const [contributions, setContributions] = useState<KBContribution[]>([]);
+  const [pendingContributions, setPendingContributions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'entries' | 'flagged'>('entries');
+  const [activeTab, setActiveTab] = useState<'entries' | 'flagged' | 'contributions'>('entries');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<KBEntry | null>(null);
   const [selectedFlagged, setSelectedFlagged] = useState<FlaggedChat | null>(null);
+  const [selectedContribution, setSelectedContribution] = useState<KBContribution | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [confidenceLevel, setConfidenceLevel] = useState(0.8);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -88,13 +115,46 @@ export function ManagerKB() {
     }
   }, []);
 
+  const fetchContributions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.get<ContributionListResponse>('/chat/kb/contributions', {
+        params: { status_filter: 'pending' }
+      });
+      setContributions(response.data.contributions);
+      setPendingContributions(response.data.pending_count);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to load contributions');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'entries') {
       fetchEntries();
-    } else {
+    } else if (activeTab === 'flagged') {
       fetchFlagged();
+    } else if (activeTab === 'contributions') {
+      fetchContributions();
     }
-  }, [activeTab, fetchEntries, fetchFlagged]);
+  }, [activeTab, fetchEntries, fetchFlagged, fetchContributions]);
+
+  // Also fetch contribution count on initial load
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      try {
+        const response = await apiClient.get<ContributionListResponse>('/chat/kb/contributions', {
+          params: { status_filter: 'pending', limit: 1 }
+        });
+        setPendingContributions(response.data.pending_count);
+      } catch (err) {
+        // Silently fail
+      }
+    };
+    fetchPendingCount();
+  }, []);
 
   const handleRemoveEntry = async (entryId: number, permanent: boolean = false) => {
     try {
@@ -134,6 +194,42 @@ export function ManagerKB() {
     }
   };
 
+  const handleApproveContribution = async (contributionId: number) => {
+    try {
+      await apiClient.post(`/chat/kb/contributions/${contributionId}/review`, {
+        action: 'approve',
+        confidence: confidenceLevel
+      });
+      setSuccessMessage('Contribution approved and added to KB');
+      fetchContributions();
+      setSelectedContribution(null);
+      setConfidenceLevel(0.8);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to approve contribution');
+    }
+  };
+
+  const handleRejectContribution = async (contributionId: number) => {
+    if (!rejectionReason.trim()) {
+      setError('Rejection reason is required');
+      return;
+    }
+    try {
+      await apiClient.post(`/chat/kb/contributions/${contributionId}/review`, {
+        action: 'reject',
+        rejection_reason: rejectionReason
+      });
+      setSuccessMessage('Contribution rejected');
+      fetchContributions();
+      setSelectedContribution(null);
+      setRejectionReason('');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to reject contribution');
+    }
+  };
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'N/A';
     return new Date(dateStr).toLocaleString();
@@ -169,6 +265,15 @@ export function ManagerKB() {
           🚩 Flagged Chats
           {flaggedChats.length > 0 && (
             <span className="tab-badge">{flaggedChats.length}</span>
+          )}
+        </button>
+        <button
+          className={`tab ${activeTab === 'contributions' ? 'active' : ''}`}
+          onClick={() => setActiveTab('contributions')}
+        >
+          📝 Contributions
+          {pendingContributions > 0 && (
+            <span className="tab-badge">{pendingContributions}</span>
           )}
         </button>
       </div>
@@ -311,6 +416,60 @@ export function ManagerKB() {
         </>
       )}
 
+      {/* Contributions Tab */}
+      {activeTab === 'contributions' && (
+        <>
+          <div className="controls">
+            <button onClick={fetchContributions} className="btn-refresh">🔄 Refresh</button>
+          </div>
+
+          {loading ? (
+            <div className="loading-container">
+              <div className="loading-spinner"></div>
+            </div>
+          ) : (
+            <div className="flagged-list">
+              {contributions.length === 0 ? (
+                <div className="empty-state">
+                  <span className="empty-icon">✅</span>
+                  <p>No pending contributions to review</p>
+                </div>
+              ) : (
+                contributions.map((contribution) => (
+                  <div
+                    key={contribution.id}
+                    className="flagged-card"
+                    onClick={() => setSelectedContribution(contribution)}
+                  >
+                    <div className="flagged-header">
+                      <span className="flagged-id">Contribution #{contribution.id}</span>
+                      <span className={`badge ${contribution.status === 'pending' ? 'warning' : contribution.status === 'approved' ? 'success' : 'danger'}`}>
+                        {contribution.status}
+                      </span>
+                    </div>
+                    <div className="flagged-content">
+                      <p className="flagged-question">
+                        <strong>Q:</strong> {contribution.question}
+                      </p>
+                      <p className="flagged-answer">
+                        <strong>A:</strong> {contribution.answer.substring(0, 200)}...
+                      </p>
+                    </div>
+                    <div className="flagged-footer">
+                      <span className="flagged-user">Submitted by: {contribution.submitter_email || `#${contribution.submitter_id}`}</span>
+                      <span className="flagged-date">{formatDate(contribution.created_at)}</span>
+                    </div>
+                    {contribution.keywords && (
+                      <span className="kb-link">Keywords: {contribution.keywords}</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Entry Detail Modal */}
       {selectedEntry && (
         <div className="modal-overlay" onClick={() => setSelectedEntry(null)}>
@@ -430,6 +589,93 @@ export function ManagerKB() {
 
             <button onClick={() => setSelectedFlagged(null)} className="btn-close">
               Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Contribution Review Modal */}
+      {selectedContribution && (
+        <div className="modal-overlay" onClick={() => setSelectedContribution(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>📝 Review Contribution #{selectedContribution.id}</h3>
+            
+            <div className="modal-section">
+              <label>Question</label>
+              <p className="modal-text">{selectedContribution.question}</p>
+            </div>
+
+            <div className="modal-section">
+              <label>Answer</label>
+              <p className="modal-text">{selectedContribution.answer}</p>
+            </div>
+
+            <div className="modal-meta">
+              <span>Submitted by: {selectedContribution.submitter_email || `#${selectedContribution.submitter_id}`}</span>
+              <span>Keywords: {selectedContribution.keywords || 'None'}</span>
+              <span>Submitted: {formatDate(selectedContribution.created_at)}</span>
+            </div>
+
+            {selectedContribution.status === 'pending' && (
+              <>
+                <div className="modal-section">
+                  <label>Confidence Level (for approval)</label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="1"
+                    step="0.05"
+                    value={confidenceLevel}
+                    onChange={(e) => setConfidenceLevel(parseFloat(e.target.value))}
+                    className="confidence-slider"
+                  />
+                  <span className="confidence-value">{(confidenceLevel * 100).toFixed(0)}%</span>
+                </div>
+
+                <div className="modal-section">
+                  <label>Rejection Reason (required for rejection)</label>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Enter reason for rejection..."
+                    className="rejection-input"
+                  />
+                </div>
+
+                <div className="review-actions">
+                  <button
+                    onClick={() => handleApproveContribution(selectedContribution.id)}
+                    className="review-btn approve"
+                  >
+                    ✅ Approve
+                    <span>Add to knowledge base</span>
+                  </button>
+                  <button
+                    onClick={() => handleRejectContribution(selectedContribution.id)}
+                    className="review-btn reject"
+                  >
+                    ❌ Reject
+                    <span>Decline this contribution</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {selectedContribution.status !== 'pending' && (
+              <div className="modal-section">
+                <p className={`status-message ${selectedContribution.status}`}>
+                  This contribution has been {selectedContribution.status}.
+                  {selectedContribution.rejection_reason && (
+                    <span className="rejection-reason">
+                      Reason: {selectedContribution.rejection_reason}
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            <button onClick={() => setSelectedContribution(null)} className="btn-close">
+              Close
             </button>
           </div>
         </div>

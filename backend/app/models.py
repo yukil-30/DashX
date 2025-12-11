@@ -553,3 +553,26 @@ class ForumPost(Base):
     # Relationships
     thread = relationship("ForumThread", back_populates="posts")
     author = relationship("Account", backref="forum_posts")
+
+
+class KBContribution(Base):
+    """Customer-submitted knowledge base entries pending approval"""
+    __tablename__ = "kb_contributions"
+
+    id = Column(Integer, primary_key=True)
+    submitter_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+    keywords = Column(Text, nullable=True)  # Comma-separated keywords
+    status = Column(String(50), nullable=False, default='pending')  # pending, approved, rejected
+    rejection_reason = Column(Text, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(Text, nullable=True)  # ISO timestamp
+    created_kb_entry_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(Text, nullable=False)
+    updated_at = Column(Text, nullable=True)
+
+    # Relationships
+    submitter = relationship("Account", foreign_keys=[submitter_id], backref="kb_contributions")
+    reviewer = relationship("Account", foreign_keys=[reviewed_by])
+    created_kb_entry = relationship("KnowledgeBase", foreign_keys=[created_kb_entry_id])
