@@ -1,4 +1,4 @@
-
+import { Star } from 'lucide-react';
 
 interface RatingStarsProps {
   rating: number; // 0-5
@@ -19,7 +19,13 @@ export default function RatingStars({
   onChange,
   readonly = true,
 }: RatingStarsProps) {
-  const sizeClasses = {
+  const sizeMap = {
+    sm: 14,
+    md: 18,
+    lg: 24,
+  };
+
+  const textSizeClasses = {
     sm: 'text-sm',
     md: 'text-base',
     lg: 'text-xl',
@@ -30,6 +36,8 @@ export default function RatingStars({
       onChange(index + 1);
     }
   };
+
+  const starSize = sizeMap[size];
 
   return (
     <div className="flex items-center gap-1">
@@ -44,24 +52,24 @@ export default function RatingStars({
               type="button"
               onClick={() => handleClick(index)}
               disabled={readonly}
-              className={`${sizeClasses[size]} ${
+              className={`${
                 readonly ? 'cursor-default' : 'cursor-pointer hover:scale-110'
               } transition-transform`}
               aria-label={`Rate ${index + 1} stars`}
             >
               {isFilled ? (
-                <span className="text-yellow-400">★</span>
+                <Star size={starSize} className="text-yellow-400 fill-yellow-400" />
               ) : isHalf ? (
-                <span className="text-yellow-400">⯨</span>
+                <Star size={starSize} className="text-yellow-400 fill-yellow-200" />
               ) : (
-                <span className="text-gray-300">☆</span>
+                <Star size={starSize} className="text-gray-300" fill="none" />
               )}
             </button>
           );
         })}
       </div>
       {showCount && count !== undefined && (
-        <span className={`${sizeClasses[size]} text-gray-600 ml-1`}>
+        <span className={`${textSizeClasses[size]} text-gray-600 ml-1`}>
           ({count})
         </span>
       )}

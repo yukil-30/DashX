@@ -170,7 +170,7 @@ class Thread(Base):
 
     id = Column(Integer, primary_key=True)
     topic = Column(String(255), nullable=False)
-    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=False)
+    restaurantID = Column(Integer, ForeignKey("restaurant.id", ondelete="CASCADE"), nullable=True)
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="threads")

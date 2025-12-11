@@ -1058,7 +1058,7 @@ class ThreadDetailResponse(BaseModel):
     """Detailed thread response with posts"""
     id: int
     topic: str
-    restaurantID: int
+    restaurantID: Optional[int] = None
     created_by_id: int
     created_by_email: Optional[str] = None
     category: Optional[str] = None
