@@ -19,6 +19,7 @@ import CreateDish from './pages/chef/CreateDish';
 import ModifyDish from "./pages/chef/ModifyDish";
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import DeliveryHistoryPage from './pages/delivery/DeliveryHistoryPage'
+import DeliveryComplaintsPage from './pages/delivery/DeliveryComplaintsPage'
 import { ManagerOrders } from './pages/manager/ManagerOrders'
 import { ManagerOrderDetail } from './pages/manager/ManagerOrderDetail'
 import { ManagerComplaints } from './pages/manager/ManagerComplaints'
@@ -32,6 +33,7 @@ import { ManagerKB } from './pages/manager/ManagerKB'
 import CustomerDashboard from './pages/customer/CustomerDashboard'
 import OrderHistoryPage from './pages/customer/OrderHistoryPage'
 import TransactionsPage from './pages/customer/TransactionsPage'
+import ComplaintsPage from './pages/customer/ComplaintsPage'
 import ForumPage from './pages/ForumPage'
 import ThreadDetailPage from './pages/ThreadDetailPage'
 import ChefsListPage from './pages/ChefsListPage'
@@ -94,9 +96,14 @@ function Navigation() {
             )}
 
             {user?.type === 'delivery' && (
-              <Link to="/delivery/dashboard" className="text-gray-700 hover:text-primary-600 font-medium">
-                Dashboard
-              </Link>
+              <>
+                <Link to="/delivery/dashboard" className="text-gray-700 hover:text-primary-600 font-medium">
+                  Dashboard
+                </Link>
+                <Link to="/delivery/complaints" className="text-gray-700 hover:text-primary-600 font-medium">
+                  Complaints
+                </Link>
+              </>
             )}
 
             {/* ✅ Customer & VIP Navigation */}
@@ -109,6 +116,10 @@ function Navigation() {
                 <Link to="/customer/orders" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
                   <span className="hidden sm:inline">My Orders</span>
                   <span className="sm:hidden text-xl">📋</span>
+                </Link>
+                <Link to="/customer/complaints" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+                  <span className="hidden sm:inline">Complaints</span>
+                  <span className="sm:hidden text-xl">📝</span>
                 </Link>
               </>
             )}
@@ -238,6 +249,12 @@ function AppRoutes() {
           isCustomerOrVip ? <TransactionsPage /> : <Navigate to="/auth/login" replace />
         }
       />
+      <Route
+        path="/customer/complaints"
+        element={
+          user?.type === 'customer' ? <ComplaintsPage /> : <Navigate to="/auth/login" replace />
+        }
+      />
 
       {/* Public Profile Routes */}
       <Route path="/chefs" element={<ChefsListPage />} />
@@ -332,6 +349,12 @@ function AppRoutes() {
         path="/delivery/history"
         element={
           user?.type === 'delivery' ? <DeliveryHistoryPage /> : <Navigate to="/" replace />
+        }
+      />
+      <Route
+        path="/delivery/complaints"
+        element={
+          user?.type === 'delivery' ? <DeliveryComplaintsPage /> : <Navigate to="/" replace />
         }
       />
 

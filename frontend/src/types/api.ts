@@ -145,13 +145,52 @@ export interface ChatRateRequest {
   rating: number;
 }
 
+// Complaints & Compliments
 export interface Complaint {
   id: number;
-  order_id: number;
-  complaint_text: string;
-  created_at: string;
+  accountID: number | null;
+  type: 'complaint' | 'compliment';
+  description: string;
+  filer: number;
+  filer_email: string | null;
+  about_email: string | null;
+  order_id: number | null;
+  status: 'pending' | 'resolved' | 'disputed';
+  resolution: string | null;
+  resolved_by: number | null;
   resolved_at: string | null;
-  resolution_notes: string | null;
+  created_at: string;
+  disputed: boolean;
+  dispute_reason: string | null;
+  disputed_at: string | null;
+  target_type: 'chef' | 'delivery' | 'customer' | null;
+}
+
+export interface ComplaintCreateRequest {
+  about_user_id: number | null;
+  order_id: number | null;
+  type: 'complaint' | 'compliment';
+  text: string;
+  target_type?: 'chef' | 'delivery' | 'customer';
+}
+
+export interface ComplaintListResponse {
+  complaints: Complaint[];
+  total: number;
+  unresolved_count: number;
+}
+
+export interface DisputeRequest {
+  reason: string;
+}
+
+export interface DisputeResponse {
+  message: string;
+  complaint_id: number;
+  disputed: boolean;
+  dispute_reason: string;
+  status: string;
+  disputed_at: string;
 }
 
 // VIP Status

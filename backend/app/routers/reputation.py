@@ -21,12 +21,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Account, Complaint, AuditLog, Blacklist, ManagerNotification, Dish
+from app.models import Account, Complaint, AuditLog, Blacklist, ManagerNotification, Dish, Order, OrderedDish, Bid
 from app.schemas import (
     ComplaintCreateRequest, ComplaintResponse, ComplaintListResponse,
     ComplaintResolveRequest, ComplaintResolveResponse,
     AuditLogResponse, AuditLogListResponse,
-    ManagerNotificationResponse, ManagerNotificationListResponse
+    ManagerNotificationResponse, ManagerNotificationListResponse,
+    DisputeRequest, DisputeResponse
 )
 from app.auth import get_current_user, require_manager
 
@@ -309,6 +310,119 @@ def check_compliment_cancellation(db: Session, account: Account, manager_id: int
 # Complaint Endpoints
 # ============================================================
 
+def validate_complaint_filing(
+    db: Session,
+    filer: Account,
+    target: Account,
+    order_id: Optional[int],
+    target_type: Optional[str]
+) -> str:
+    """
+    Validate that the filer can file a complaint against the target.
+    
+    Filing rules:
+    - Customer can file against: chef (of dish they ordered), delivery person (who delivered their order)
+    - Delivery person can file against: customers (whose orders they delivered)
+    
+    Returns the validated target_type or raises HTTPException.
+    """
+    filer_is_customer = filer.type in ["customer", "vip", "visitor"]
+    filer_is_delivery = filer.type == "delivery"
+    target_is_customer = target.type in ["customer", "vip"]
+    target_is_chef = target.type == "chef"
+    target_is_delivery = target.type == "delivery"
+    
+    # Validate customer filing against chef
+    if filer_is_customer and target_is_chef:
+        if not order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order ID required when filing complaint against a chef"
+            )
+        # Verify customer ordered from this chef
+        order = db.query(Order).filter(Order.id == order_id, Order.accountID == filer.ID).first()
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You can only file complaints about orders you placed"
+            )
+        # Verify the chef made dishes in this order
+        ordered_dishes = db.query(OrderedDish).filter(OrderedDish.orderID == order_id).all()
+        dish_ids = [od.DishID for od in ordered_dishes]
+        from app.models import Dish
+        chef_dishes = db.query(Dish).filter(Dish.id.in_(dish_ids), Dish.chefID == target.ID).count()
+        if chef_dishes == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This chef did not prepare any dishes in your order"
+            )
+        return "chef"
+    
+    # Validate customer filing against delivery person
+    if filer_is_customer and target_is_delivery:
+        if not order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order ID required when filing complaint against a delivery person"
+            )
+        # Verify this delivery person delivered the customer's order
+        order = db.query(Order).filter(Order.id == order_id, Order.accountID == filer.ID).first()
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You can only file complaints about orders you placed"
+            )
+        if not order.bidID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This order has no assigned delivery person"
+            )
+        bid = db.query(Bid).filter(Bid.id == order.bidID).first()
+        if not bid or bid.deliveryPersonID != target.ID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This delivery person did not deliver your order"
+            )
+        return "delivery"
+    
+    # Validate delivery person filing against customer
+    if filer_is_delivery and target_is_customer:
+        if not order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order ID required when filing complaint against a customer"
+            )
+        # Verify the delivery person delivered this customer's order
+        order = db.query(Order).filter(Order.id == order_id, Order.accountID == target.ID).first()
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This order does not belong to the specified customer"
+            )
+        if not order.bidID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This order has no assigned delivery person"
+            )
+        bid = db.query(Bid).filter(Bid.id == order.bidID).first()
+        if not bid or bid.deliveryPersonID != filer.ID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You did not deliver this order"
+            )
+        return "customer"
+    
+    # Manager can file against anyone
+    if filer.type == "manager":
+        return target_type or target.type
+    
+    # Invalid combination
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"User type '{filer.type}' cannot file complaints against user type '{target.type}'"
+    )
+
+
 @router.post("", response_model=ComplaintResponse, status_code=status.HTTP_201_CREATED)
 async def file_complaint(
     request: ComplaintCreateRequest,
@@ -318,13 +432,22 @@ async def file_complaint(
     """
     File a complaint or compliment.
     
+    Filing rules:
+    - Customer can file against: chef (of dish they ordered), delivery person (who delivered their order)
+    - Delivery person can file against: customers (whose orders they delivered)
+    - Manager can file against anyone
+    
+    Parameters:
     - about_user_id: User being complained about (null for general complaints)
-    - order_id: Related order (optional)
+    - order_id: Related order (required for most complaint types)
     - type: 'complaint' or 'compliment'
     - text: Description
+    - target_type: Role of person being complained about (optional, auto-detected)
     """
     # Validate about_user_id if provided
     about_account = None
+    validated_target_type = None
+    
     if request.about_user_id:
         # Prevent self-complaints
         if request.about_user_id == current_user.ID:
@@ -339,6 +462,11 @@ async def file_complaint(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User being complained about not found"
             )
+        
+        # Validate filing rules
+        validated_target_type = validate_complaint_filing(
+            db, current_user, about_account, request.order_id, request.target_type
+        )
     
     # Create complaint
     complaint = Complaint(
@@ -348,6 +476,8 @@ async def file_complaint(
         filer=current_user.ID,
         order_id=request.order_id,
         status="pending",
+        target_type=validated_target_type,
+        disputed=False,
         created_at=get_iso_now()
     )
     db.add(complaint)
@@ -361,7 +491,7 @@ async def file_complaint(
         target_id=request.about_user_id,
         complaint_id=complaint.id,
         order_id=request.order_id,
-        details={"type": request.type}
+        details={"type": request.type, "target_type": validated_target_type}
     )
     
     db.commit()
@@ -382,7 +512,11 @@ async def file_complaint(
         resolution=complaint.resolution,
         resolved_by=complaint.resolved_by,
         resolved_at=complaint.resolved_at,
-        created_at=complaint.created_at.isoformat() if hasattr(complaint.created_at, "isoformat") else complaint.created_at
+        created_at=complaint.created_at.isoformat() if hasattr(complaint.created_at, "isoformat") else complaint.created_at,
+        disputed=complaint.disputed if complaint.disputed is not None else False,
+        dispute_reason=complaint.dispute_reason,
+        disputed_at=complaint.disputed_at,
+        target_type=complaint.target_type
     )
 
 
@@ -429,7 +563,11 @@ async def list_complaints(
             resolution=c.resolution,
             resolved_by=c.resolved_by,
             resolved_at=c.resolved_at,
-            created_at=c.created_at.isoformat() if hasattr(c.created_at, "isoformat") else c.created_at
+            created_at=c.created_at.isoformat() if hasattr(c.created_at, "isoformat") else c.created_at,
+            disputed=c.disputed if c.disputed is not None else False,
+            dispute_reason=c.dispute_reason,
+            disputed_at=c.disputed_at,
+            target_type=c.target_type
         ))
     
     return ComplaintListResponse(
@@ -469,7 +607,191 @@ async def get_complaint(
         resolution=complaint.resolution,
         resolved_by=complaint.resolved_by,
         resolved_at=complaint.resolved_at,
-        created_at=complaint.created_at.isoformat() if hasattr(complaint.created_at, "isoformat") else complaint.created_at
+        created_at=complaint.created_at.isoformat() if hasattr(complaint.created_at, "isoformat") else complaint.created_at,
+        disputed=complaint.disputed if complaint.disputed is not None else False,
+        dispute_reason=complaint.dispute_reason,
+        disputed_at=complaint.disputed_at,
+        target_type=complaint.target_type
+    )
+
+
+@router.post("/{complaint_id}/dispute", response_model=DisputeResponse)
+async def dispute_complaint(
+    complaint_id: int,
+    request: DisputeRequest,
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Dispute a complaint filed against you.
+    
+    Anyone receiving a complaint can dispute it.
+    Disputed complaints move to the manager queue for resolution.
+    """
+    complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
+    if not complaint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Complaint not found"
+        )
+    
+    # Only the person complained about can dispute
+    if complaint.accountID != current_user.ID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only dispute complaints filed against you"
+        )
+    
+    # Can't dispute compliments
+    if complaint.type == "compliment":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot dispute a compliment"
+        )
+    
+    # Can't dispute already resolved complaints
+    if complaint.status == "resolved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot dispute an already resolved complaint"
+        )
+    
+    # Can't dispute twice
+    if complaint.disputed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This complaint has already been disputed"
+        )
+    
+    # Mark as disputed
+    complaint.disputed = True
+    complaint.dispute_reason = request.reason
+    complaint.disputed_at = get_iso_now()
+    complaint.status = "disputed"
+    
+    # Create audit entry
+    create_audit_entry(
+        db,
+        action_type="complaint_disputed",
+        actor_id=current_user.ID,
+        target_id=complaint.filer,
+        complaint_id=complaint.id,
+        details={"reason": request.reason}
+    )
+    
+    # Notify managers
+    filer = db.query(Account).filter(Account.ID == complaint.filer).first()
+    create_manager_notification(
+        db,
+        notification_type="complaint_disputed",
+        title="Complaint Disputed",
+        message=f"Complaint #{complaint.id} by {filer.email if filer else 'unknown'} has been disputed by {current_user.email}",
+        related_account_id=current_user.ID
+    )
+    
+    db.commit()
+    
+    logger.info(f"Complaint {complaint_id} disputed by {current_user.email}")
+    
+    return DisputeResponse(
+        message="Complaint has been disputed and sent to manager queue",
+        complaint_id=complaint.id,
+        disputed=True,
+        dispute_reason=request.reason,
+        status="disputed",
+        disputed_at=complaint.disputed_at
+    )
+
+
+@router.get("/my/filed", response_model=ComplaintListResponse)
+async def get_my_filed_complaints(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get complaints/compliments filed by the current user."""
+    query = db.query(Complaint).filter(Complaint.filer == current_user.ID)
+    
+    total = query.count()
+    unresolved_count = query.filter(Complaint.status == "pending").count()
+    
+    complaints = query.order_by(Complaint.created_at.desc()).offset(offset).limit(limit).all()
+    
+    response_complaints = []
+    for c in complaints:
+        about_account = db.query(Account).filter(Account.ID == c.accountID).first() if c.accountID else None
+        
+        response_complaints.append(ComplaintResponse(
+            id=c.id,
+            accountID=c.accountID,
+            type=c.type,
+            description=c.description,
+            filer=c.filer,
+            filer_email=current_user.email,
+            about_email=about_account.email if about_account else None,
+            order_id=c.order_id,
+            status=c.status,
+            resolution=c.resolution,
+            resolved_by=c.resolved_by,
+            resolved_at=c.resolved_at.isoformat() if hasattr(c.resolved_at, "isoformat") else c.resolved_at,
+            created_at=c.created_at.isoformat() if hasattr(c.created_at, "isoformat") else c.created_at,
+            disputed=c.disputed if c.disputed is not None else False,
+            dispute_reason=c.dispute_reason,
+            disputed_at=c.disputed_at,
+            target_type=c.target_type
+        ))
+    
+    return ComplaintListResponse(
+        complaints=response_complaints,
+        total=total,
+        unresolved_count=unresolved_count
+    )
+
+
+@router.get("/my/against", response_model=ComplaintListResponse)
+async def get_complaints_against_me(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get complaints/compliments filed against the current user."""
+    query = db.query(Complaint).filter(Complaint.accountID == current_user.ID)
+    
+    total = query.count()
+    unresolved_count = query.filter(Complaint.status == "pending").count()
+    
+    complaints = query.order_by(Complaint.created_at.desc()).offset(offset).limit(limit).all()
+    
+    response_complaints = []
+    for c in complaints:
+        filer_account = db.query(Account).filter(Account.ID == c.filer).first()
+        
+        response_complaints.append(ComplaintResponse(
+            id=c.id,
+            accountID=c.accountID,
+            type=c.type,
+            description=c.description,
+            filer=c.filer,
+            filer_email=filer_account.email if filer_account else None,
+            about_email=current_user.email,
+            order_id=c.order_id,
+            status=c.status,
+            resolution=c.resolution,
+            resolved_by=c.resolved_by,
+            resolved_at=c.resolved_at.isoformat() if hasattr(c.resolved_at, "isoformat") else c.resolved_at,
+            created_at=c.created_at.isoformat() if hasattr(c.created_at, "isoformat") else c.created_at,
+            disputed=c.disputed if c.disputed is not None else False,
+            dispute_reason=c.dispute_reason,
+            disputed_at=c.disputed_at,
+            target_type=c.target_type
+        ))
+    
+    return ComplaintListResponse(
+        complaints=response_complaints,
+        total=total,
+        unresolved_count=unresolved_count
     )
 
 

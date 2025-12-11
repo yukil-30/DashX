@@ -7,3 +7,5 @@ export { default as BidsList } from './BidsList';
 export { default as ManagerAssignModal } from './ManagerAssignModal';
 export { default as WarningsBanner } from './WarningsBanner';
 export { default as LoadingSkeleton, DishCardSkeleton, DishDetailSkeleton } from './LoadingSkeleton';
+export { default as ComplaintForm } from './ComplaintForm';
+export { default as ComplaintsList } from './ComplaintsList';

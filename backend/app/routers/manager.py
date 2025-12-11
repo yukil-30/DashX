@@ -928,7 +928,7 @@ async def list_disputes(
             ).count()
         
         # Check if disputed (we'll mark complaints filed by delivery as potential disputes)
-        is_disputed = c.status == "disputed"
+        is_disputed = c.status == "disputed" or c.disputed
         
         results.append(DisputeResponse(
             complaint_id=c.id,
@@ -942,7 +942,7 @@ async def list_disputes(
             order_id=c.order_id,
             status=c.status,
             is_disputed=is_disputed,
-            dispute_reason=None,  # Can be extended to store dispute reason
+            dispute_reason=c.dispute_reason,  # Include dispute reason from complaint
             filer_warnings=filer.warnings if filer else 0,
             about_warnings=about.warnings if about else 0,
             about_complaints_count=about_complaints,
@@ -1147,6 +1147,8 @@ async def mark_as_disputed(
 ):
     """
     Mark a complaint as disputed (delivery personnel can dispute complaints about them).
+    This endpoint is kept for backwards compatibility.
+    Use POST /complaints/{complaint_id}/dispute in the reputation router for the full dispute flow.
     """
     complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
     
@@ -1169,7 +1171,18 @@ async def mark_as_disputed(
             detail=f"Cannot dispute complaint with status: {complaint.status}"
         )
     
+    # Can't dispute compliments
+    if complaint.type == "compliment":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot dispute a compliment"
+        )
+    
+    # Set disputed fields
     complaint.status = "disputed"
+    complaint.disputed = True
+    complaint.dispute_reason = reason
+    complaint.disputed_at = get_iso_now()
     
     # Create notification for manager
     create_manager_notification(
@@ -1195,7 +1208,10 @@ async def mark_as_disputed(
     return {
         "message": "Complaint marked as disputed",
         "complaint_id": complaint.id,
-        "status": "disputed"
+        "status": "disputed",
+        "disputed": True,
+        "dispute_reason": reason,
+        "disputed_at": complaint.disputed_at
     }
 
 

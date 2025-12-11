@@ -79,7 +79,11 @@ def create_mock_complaint(
     resolution=None,
     resolved_by=None,
     resolved_at=None,
-    created_at=None
+    created_at=None,
+    disputed=False,
+    dispute_reason=None,
+    disputed_at=None,
+    target_type=None
 ):
     """Create a mock complaint"""
     mock = MagicMock()
@@ -94,6 +98,10 @@ def create_mock_complaint(
     mock.resolved_by = resolved_by
     mock.resolved_at = resolved_at
     mock.created_at = created_at or datetime.now(timezone.utc).isoformat()
+    mock.disputed = disputed
+    mock.dispute_reason = dispute_reason
+    mock.disputed_at = disputed_at
+    mock.target_type = target_type
     return mock
 
 
@@ -140,8 +148,9 @@ class TestComplaintFiling:
     """Test POST /complaints endpoint"""
 
     def test_file_complaint_success(self):
-        """Test successfully filing a complaint"""
-        mock_user = create_mock_user(ID=1, email="filer@example.com")
+        """Test successfully filing a complaint (as manager)"""
+        # Using manager type since regular users need order context
+        mock_user = create_mock_user(ID=1, email="filer@example.com", type="manager")
         mock_target = create_mock_user(ID=2, email="target@example.com")
         mock_db = create_mock_db()
         
@@ -173,8 +182,9 @@ class TestComplaintFiling:
             app.dependency_overrides.clear()
 
     def test_file_compliment_success(self):
-        """Test successfully filing a compliment"""
-        mock_user = create_mock_user(ID=1)
+        """Test successfully filing a compliment (as manager)"""
+        # Using manager type since regular users need order context
+        mock_user = create_mock_user(ID=1, type="manager")
         mock_target = create_mock_user(ID=3)
         mock_db = create_mock_db()
         

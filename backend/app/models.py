@@ -230,11 +230,19 @@ class Complaint(Base):
     description = Column(Text, nullable=False)
     filer = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
-    status = Column(String(50), nullable=False, default='pending')  # pending, resolved
-    resolution = Column(String(50), nullable=True)  # dismissed, warning_issued
+    status = Column(String(50), nullable=False, default='pending')  # pending, resolved, disputed
+    resolution = Column(String(50), nullable=True)  # dismissed, warning_issued, upheld, dismissed_with_warning
     resolved_by = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
     resolved_at = Column(Text, nullable=True)  # ISO timestamp
     created_at = Column(Text, nullable=True)  # ISO timestamp
+    
+    # Dispute fields
+    disputed = Column(Boolean, nullable=False, default=False)  # Whether complaint has been disputed
+    dispute_reason = Column(Text, nullable=True)  # Reason for dispute
+    disputed_at = Column(Text, nullable=True)  # ISO timestamp when disputed
+    
+    # Target type tracking for filing rules
+    target_type = Column(String(50), nullable=True)  # 'chef', 'delivery', 'customer' - role of person complained about
 
     # Relationships
     account = relationship("Account", back_populates="complaints_about", foreign_keys=[accountID])

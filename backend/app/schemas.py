@@ -424,9 +424,17 @@ class ComplaintCreateRequest(BaseModel):
     """Request for filing a complaint or compliment"""
     from_user_id: Optional[int] = Field(None, description="User filing the complaint (auto-set from token)")
     about_user_id: Optional[int] = Field(None, description="User being complained about (null for general)")
-    order_id: Optional[int] = Field(None, description="Related order (optional)")
+    order_id: Optional[int] = Field(None, description="Related order (optional but recommended for validation)")
     type: Literal["complaint", "compliment"] = Field(..., description="Type of feedback")
     text: str = Field(..., min_length=1, max_length=2000, description="Complaint/compliment description")
+    target_type: Optional[Literal["chef", "delivery", "customer"]] = Field(
+        None, description="Role of person being complained about (for validation)"
+    )
+
+
+class DisputeRequest(BaseModel):
+    """Request to dispute a complaint"""
+    reason: str = Field(..., min_length=10, max_length=2000, description="Reason for disputing the complaint")
 
 
 class ComplaintResponse(BaseModel):
@@ -444,6 +452,11 @@ class ComplaintResponse(BaseModel):
     resolved_by: Optional[int] = None
     resolved_at: Optional[str] = None
     created_at: Optional[str] = None
+    # Dispute fields
+    disputed: bool = False
+    dispute_reason: Optional[str] = None
+    disputed_at: Optional[str] = None
+    target_type: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -474,6 +487,23 @@ class ComplaintResolveResponse(BaseModel):
     warning_count: Optional[int] = None
     account_status_changed: Optional[str] = None
     audit_log_id: int
+
+
+class DisputeResponse(BaseModel):
+    """Response after disputing a complaint"""
+    message: str
+    complaint_id: int
+    disputed: bool = True
+    dispute_reason: str
+    status: str = "disputed"
+    disputed_at: str
+
+
+class DisputedComplaintListResponse(BaseModel):
+    """List of disputed complaints for manager queue"""
+    complaints: List[ComplaintResponse]
+    total: int
+    pending_count: int
 
 
 # ============================================================
