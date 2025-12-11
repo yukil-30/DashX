@@ -163,7 +163,7 @@ export default function ForumPage() {
           {threads.map((thread) => (
             <Link
               key={thread.id}
-              to={`/forum/threads/${thread.id}`}
+              to={`/forum/${thread.id}`}
               className="block bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow"
             >
               <div className="flex items-start justify-between">
