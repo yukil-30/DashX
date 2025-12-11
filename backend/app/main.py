@@ -241,6 +241,14 @@ else:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+IMAGES_DIR = Path("images/dishes")
+if IMAGES_DIR.exists():
+    app.mount("/images", StaticFiles(directory=str(IMAGES_DIR.parent)), name="images")
+else:
+    logger.warning(f"Images directory {IMAGES_DIR} does not exist, creating it...")
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/images", StaticFiles(directory=str(IMAGES_DIR.parent)), name="images")
+
 # Future routers
 # from app.routers import orders, ai
 # app.include_router(orders.router, prefix="/api/orders", tags=["Orders"])

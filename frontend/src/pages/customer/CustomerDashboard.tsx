@@ -40,6 +40,8 @@ export default function CustomerDashboard() {
       setLoading(false);
     }
   };
+const getBackendImage = (path: string | null) =>
+  path ? `http://localhost:8000/${encodeURI(path.replace(/^\/+/, ''))}` : '/images/placeholder.png';
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,7 +253,7 @@ export default function CustomerDashboard() {
             <Link to={`/dishes/${dashboard.most_popular_dish.id}`} className="block">
               {dashboard.most_popular_dish.picture ? (
                 <img
-                  src={dashboard.most_popular_dish.picture}
+                  src={getBackendImage(dashboard.most_popular_dish.picture)}
                   alt={dashboard.most_popular_dish.name}
                   className="w-full h-32 object-cover rounded-lg mb-3"
                 />
@@ -286,7 +288,7 @@ export default function CustomerDashboard() {
             <Link to={`/dishes/${dashboard.highest_rated_dish.id}`} className="block">
               {dashboard.highest_rated_dish.picture ? (
                 <img
-                  src={dashboard.highest_rated_dish.picture}
+                  src={getBackendImage(dashboard.highest_rated_dish.picture)}
                   alt={dashboard.highest_rated_dish.name}
                   className="w-full h-32 object-cover rounded-lg mb-3"
                 />
@@ -415,9 +417,17 @@ export default function CustomerDashboard() {
         <div className="bg-white rounded-xl shadow-md p-6">
           <h3 className="text-xl font-semibold text-gray-700 mb-4">Your Favorites</h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {dashboard.favorite_dishes.map((dish) => (
-              <DishCard key={dish.id} dish={dish} />
-            ))}
+{dashboard.favorite_dishes.map((dish) => (
+  <DishCard
+    key={dish.id}
+    dish={{
+      ...dish,
+      picture: dish.picture
+        ? `http://localhost:8000/${encodeURI(dish.picture.replace(/^\/+/, ''))}`
+        : ''
+    }}
+  />
+))}
           </div>
         </div>
       )}

@@ -109,6 +109,9 @@ export default function OrderHistoryPage() {
                   ...item,
                   dish_chef_id: dish.chefID,
                   dish_chef_name: chefName,
+  			dish_picture: dish.picture
+    			? `http://localhost:8000/${encodeURI(dish.picture.replace(/^\/+/, ''))}`
+    			: null,
                   // UPDATED: Allow reviews on paid orders, not just delivered
                   can_review: ['paid', 'assigned', 'in_transit', 'delivered'].includes(order.status) && !item.has_reviewed
                 };

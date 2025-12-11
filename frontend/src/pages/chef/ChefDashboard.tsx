@@ -27,6 +27,18 @@ useEffect(() => {
       setLoading(false);
     }
   };
+  // Helper to build full image URLs
+  const getImageUrl = (path?: string) => {
+    if (!path) return '';
+    const backendUrl = 'http://localhost:8000';
+    return `${backendUrl}/${encodeURI(path.replace(/^\/+/, ''))}`;
+  };
+
+  // Map dishes with full image URLs **just before passing to DishGrid**
+  const dishesWithFullUrl = dishes.map(d => ({
+    ...d,
+    picture: getImageUrl(d.picture),
+  }));
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -45,7 +57,11 @@ useEffect(() => {
         </div>
       </div>
 
-      <DishGrid dishes={dishes} loading={loading} emptyMessage="No dishes yet. Create your first dish!" />
+      <DishGrid
+        dishes={dishesWithFullUrl}
+        loading={loading}
+        emptyMessage="No dishes yet. Create your first dish!"
+      />
     </div>
   );
 }

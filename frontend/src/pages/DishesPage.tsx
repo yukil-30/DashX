@@ -73,6 +73,11 @@ export default function DishesPage() {
     setSearchParams(params);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+const getImageUrl = (path?: string) => {
+  if (!path) return '';
+  const backendUrl = 'http://localhost:8000';
+  return `${backendUrl}/${encodeURI(path.replace(/^\/+/, ''))}`;
+};
 
   const getEmptyMessage = () => {
     if (orderBy === 'past_orders') {
@@ -152,12 +157,18 @@ export default function DishesPage() {
 
       {/* ✅ FIXED: Allow both customers and VIPs to add to cart */}
       <DishGrid
-        dishes={data?.dishes || []}
+  dishes={
+    data?.dishes.map(d => ({
+      ...d,
+      picture: d.picture
+        ? `http://localhost:8000/${encodeURI(d.picture.replace(/^\/+/, ''))}`
+        : ''
+    })) || []
+  }
         loading={loading}
         emptyMessage={getEmptyMessage()}
         onAddToCart={isCustomerOrVip ? handleAddToCart : undefined}
       />
-
       {data && data.total_pages > 1 && (
         <div className="mt-12 flex justify-center items-center gap-2">
           <button
