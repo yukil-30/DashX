@@ -31,6 +31,7 @@ from app.schemas import (
     DishRateRequest, DishRateResponse
 )
 from app.auth import get_current_user, get_current_user_optional
+from app.image_utils import clear_dish_features_cache
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +262,9 @@ async def create_dish(
     db.commit()
     db.refresh(dish)
     
+    # Clear image search cache so new dish can be found
+    clear_dish_features_cache()
+    
     logger.info(f"Dish created: {dish.id} - {dish.name} by chef {current_user.ID}")
     
     return dish_to_response(dish)
@@ -301,6 +305,11 @@ async def update_dish(
 
     db.commit()
     db.refresh(dish)
+    
+    # Clear image search cache if picture changed
+    if "picture" in update_dict:
+        clear_dish_features_cache()
+    
     return dish_to_response(dish)
 
 
@@ -339,6 +348,9 @@ async def delete_dish(
     
     db.delete(dish)
     db.commit()
+    
+    # Clear image search cache
+    clear_dish_features_cache()
     
     logger.info(f"Dish deleted: {dish_id} by user {current_user.ID}")
     

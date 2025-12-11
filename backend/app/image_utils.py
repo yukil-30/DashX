@@ -26,10 +26,11 @@ import io
 logger = logging.getLogger(__name__)
 
 # Configuration
-USE_CLIP = False  # Set to True when CLIP is available
-USE_HUGGINGFACE = True  # Use Hugging Face vision model (default)
+# CLIP provides best semantic understanding for food similarity
+USE_CLIP = True  # Set to True for CLIP embeddings (recommended)
+USE_HUGGINGFACE = False  # Fallback Hugging Face model (not recommended - uses classification model)
 HISTOGRAM_BINS = 32  # Number of bins per color channel for histogram
-HF_MODEL_NAME = "nateraw/food"  # Food-specific vision model
+HF_MODEL_NAME = "nateraw/food"  # Food-specific vision model (classification, not embedding)
 class ImageFeatureExtractor:
     """Extract features from food images for similarity matching."""
     
@@ -349,6 +350,14 @@ def get_cached_dish_features(db_session) -> List[Tuple[int, np.ndarray, str]]:
                 image_path = f"/app{dish.picture}"
             else:
                 # Local development
+                image_path = str(Path(__file__).parent.parent / dish.picture.lstrip('/'))
+        elif dish.picture.startswith('/images/'):
+            # Images are served from /backend/images/
+            # Docker path
+            if os.path.exists('/app'):
+                image_path = f"/app{dish.picture}"
+            else:
+                # Local development - images are in backend/images/
                 image_path = str(Path(__file__).parent.parent / dish.picture.lstrip('/'))
         else:
             image_path = dish.picture
