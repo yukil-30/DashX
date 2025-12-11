@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../lib/api-client';
 import ReviewDishModal from '../../components/ReviewDishModal';
+import ReviewDeliveryModal from '../../components/ReviewDeliveryModal';
 import { Star, Package, Truck, CheckCircle, ChefHat } from 'lucide-react';
 
 interface OrderItem {
@@ -61,6 +62,14 @@ export default function OrderHistoryPage() {
     orderId: number;
     chefId: number | null;
     chefName: string | null;
+  } | null>(null);
+
+  // Delivery review modal state
+  const [deliveryReviewModalOpen, setDeliveryReviewModalOpen] = useState(false);
+  const [selectedDelivery, setSelectedDelivery] = useState<{
+    orderId: number;
+    deliveryPersonId: number;
+    deliveryPersonEmail: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -153,6 +162,15 @@ export default function OrderHistoryPage() {
   ) => {
     setSelectedDish({ dishId, dishName, orderId, chefId, chefName });
     setReviewModalOpen(true);
+  };
+
+  const handleDeliveryReviewClick = (
+    orderId: number,
+    deliveryPersonId: number,
+    deliveryPersonEmail: string | null
+  ) => {
+    setSelectedDelivery({ orderId, deliveryPersonId, deliveryPersonEmail });
+    setDeliveryReviewModalOpen(true);
   };
 
   const handleReviewSubmitted = () => {
@@ -370,6 +388,47 @@ export default function OrderHistoryPage() {
                   ))}
                 </div>
 
+                {/* Delivery Review Section */}
+                {order.delivery_person_id && (
+                  <div className="mt-6 pt-6 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                          <Truck size={20} className="text-primary-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">Delivery Driver</p>
+                          <p className="text-sm text-gray-600">{order.delivery_person_email || 'Assigned'}</p>
+                        </div>
+                      </div>
+                      <div>
+                        {order.has_reviewed_delivery ? (
+                          <span className="flex items-center gap-1 text-green-600 text-sm font-medium">
+                            <CheckCircle size={16} />
+                            Reviewed
+                          </span>
+                        ) : order.can_review_delivery ? (
+                          <button
+                            onClick={() => handleDeliveryReviewClick(
+                              order.id,
+                              order.delivery_person_id!,
+                              order.delivery_person_email
+                            )}
+                            className="flex items-center gap-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                          >
+                            <Star size={16} />
+                            Review Delivery
+                          </button>
+                        ) : (
+                          <span className="text-sm text-gray-400">
+                            Review available after delivery
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Order Summary */}
                 <div className="mt-6 pt-6 border-t border-gray-200">
                   <div className="space-y-2 text-sm">
@@ -449,6 +508,21 @@ export default function OrderHistoryPage() {
           orderId={selectedDish.orderId}
           chefId={selectedDish.chefId}
           chefName={selectedDish.chefName}
+          onReviewSubmitted={handleReviewSubmitted}
+        />
+      )}
+
+      {/* Delivery Review Modal */}
+      {selectedDelivery && (
+        <ReviewDeliveryModal
+          isOpen={deliveryReviewModalOpen}
+          onClose={() => {
+            setDeliveryReviewModalOpen(false);
+            setSelectedDelivery(null);
+          }}
+          orderId={selectedDelivery.orderId}
+          deliveryPersonId={selectedDelivery.deliveryPersonId}
+          deliveryPersonEmail={selectedDelivery.deliveryPersonEmail}
           onReviewSubmitted={handleReviewSubmitted}
         />
       )}

@@ -241,7 +241,9 @@ else:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-IMAGES_DIR = Path("images/dishes")
+# Use absolute path relative to backend directory for images
+BACKEND_DIR = Path(__file__).parent.parent
+IMAGES_DIR = BACKEND_DIR / "images" / "dishes"
 if IMAGES_DIR.exists():
     app.mount("/images", StaticFiles(directory=str(IMAGES_DIR.parent)), name="images")
 else:

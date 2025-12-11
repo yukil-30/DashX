@@ -19,7 +19,17 @@ export default function ChefProfilePage() {
   const fetchChefProfile = async () => {
     try {
       const response = await apiClient.get<ChefProfile>(`/profiles/chefs/${id}`);
-      setChef(response.data);
+      // Transform dish image URLs to use backend URL
+      const chefData = response.data;
+      if (chefData.dishes) {
+        chefData.dishes = chefData.dishes.map(dish => ({
+          ...dish,
+          picture: dish.picture
+            ? `http://localhost:8000/${encodeURI(dish.picture.replace(/^\/+/, ''))}`
+            : null
+        }));
+      }
+      setChef(chefData);
     } catch (err: any) {
       toast.error('Chef not found');
     } finally {

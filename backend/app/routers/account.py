@@ -199,7 +199,7 @@ async def get_transactions(
                 reference_type=t.reference_type,
                 reference_id=t.reference_id,
                 description=t.description,
-                created_at=t.created_at
+                created_at=t.created_at.isoformat() if hasattr(t.created_at, 'isoformat') else str(t.created_at)
             )
             for t in transactions
         ],

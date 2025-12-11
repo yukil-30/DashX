@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import apiClient from '../../lib/api-client';
+import ReviewCustomerModal from '../../components/ReviewCustomerModal';
 
 interface DeliveryHistoryItem {
   order_id: number;
+  customer_id: number;
   customer_email: string;
   delivery_address: string;
   total_cents: number;
@@ -21,6 +23,8 @@ interface DeliveryHistoryItem {
   review_text: string | null;
   on_time: boolean | null;
   has_review: boolean;
+  has_reviewed_customer: boolean;
+  can_review_customer: boolean;
 }
 
 interface DeliveryStats {
@@ -48,6 +52,14 @@ export default function DeliveryHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  
+  // Customer review modal state
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<{
+    orderId: number;
+    customerId: number;
+    customerEmail: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -70,6 +82,15 @@ export default function DeliveryHistoryPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleReviewCustomerClick = (orderId: number, customerId: number, customerEmail: string) => {
+    setSelectedCustomer({ orderId, customerId, customerEmail });
+    setReviewModalOpen(true);
+  };
+
+  const handleReviewSubmitted = () => {
+    fetchData();
   };
 
   const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -220,12 +241,39 @@ export default function DeliveryHistoryPage() {
                       </div>
                     )}
                     
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mb-4">
                       {delivery.items.map((item, idx) => (
                         <span key={idx} className="bg-gray-100 px-2 py-1 rounded text-sm">
                           {item.quantity}x {item.dish_name}
                         </span>
                       ))}
+                    </div>
+                    
+                    {/* Review Customer Section */}
+                    <div className="border-t pt-4 mt-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Your Review of Customer:</span>
+                        {delivery.has_reviewed_customer ? (
+                          <span className="flex items-center gap-1 text-green-600 text-sm font-medium">
+                            ✓ Reviewed
+                          </span>
+                        ) : delivery.can_review_customer ? (
+                          <button
+                            onClick={() => handleReviewCustomerClick(
+                              delivery.order_id,
+                              delivery.customer_id,
+                              delivery.customer_email
+                            )}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                          >
+                            ⭐ Review Customer
+                          </button>
+                        ) : (
+                          <span className="text-sm text-gray-400">
+                            Review available after delivery
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -290,6 +338,21 @@ export default function DeliveryHistoryPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Customer Review Modal */}
+      {selectedCustomer && (
+        <ReviewCustomerModal
+          isOpen={reviewModalOpen}
+          onClose={() => {
+            setReviewModalOpen(false);
+            setSelectedCustomer(null);
+          }}
+          orderId={selectedCustomer.orderId}
+          customerId={selectedCustomer.customerId}
+          customerEmail={selectedCustomer.customerEmail}
+          onReviewSubmitted={handleReviewSubmitted}
+        />
       )}
     </div>
   );

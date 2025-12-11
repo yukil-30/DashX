@@ -484,6 +484,30 @@ class OrderDeliveryReview(Base):
     reviewer = relationship("Account", foreign_keys=[reviewer_id], backref="delivery_reviews_given")
 
 
+class CustomerReview(Base):
+    """Delivery driver reviews for customers on specific orders"""
+    __tablename__ = "customer_reviews"
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, unique=True)
+    customer_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey("accounts.ID", ondelete="CASCADE"), nullable=False)  # delivery person
+    rating = Column(Integer, nullable=False)  # 1-5 stars
+    review_text = Column(Text, nullable=True)
+    was_polite = Column(Boolean, nullable=True)  # Was customer polite?
+    easy_to_find = Column(Boolean, nullable=True)  # Was address easy to find?
+    created_at = Column(Text, nullable=False)  # ISO timestamp
+
+    __table_args__ = (
+        CheckConstraint('rating >= 1 AND rating <= 5', name='check_customer_review_rating'),
+    )
+
+    # Relationships
+    order = relationship("Order", backref="customer_review")
+    customer = relationship("Account", foreign_keys=[customer_id], backref="customer_reviews_received")
+    reviewer = relationship("Account", foreign_keys=[reviewer_id], backref="customer_reviews_given")
+
+
 class VIPHistory(Base):
     """Track VIP status changes"""
     __tablename__ = "vip_history"

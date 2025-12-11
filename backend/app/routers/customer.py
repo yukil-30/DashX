@@ -147,6 +147,10 @@ def upgrade_to_vip_if_eligible(db: Session, account: Account) -> bool:
     if account.type not in ['customer']:
         return False
     
+    # ✅ FIXED: Don't re-promote customers who were demoted from VIP
+    if account.previous_type == 'vip':
+        return False
+    
     vip_status = check_vip_eligibility(db, account)
     
     if vip_status.vip_eligible:

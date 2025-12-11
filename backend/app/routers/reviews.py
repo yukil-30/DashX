@@ -18,11 +18,12 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models import (
     Account, Dish, Order, OrderedDish, DishReview, OrderDeliveryReview,
-    DeliveryRating, Bid
+    DeliveryRating, Bid, CustomerReview
 )
 from app.schemas import (
     DishReviewCreateRequest, DishReviewResponse, DishReviewListResponse,
-    DeliveryReviewCreateRequest, DeliveryReviewResponse
+    DeliveryReviewCreateRequest, DeliveryReviewResponse,
+    CustomerReviewCreateRequest, CustomerReviewResponse
 )
 from app import reputation_engine as rep_engine
 
@@ -346,7 +347,14 @@ async def get_my_reviews(
         OrderDeliveryReview.reviewer_id == current_user.ID
     ).order_by(desc(OrderDeliveryReview.id)).all()
     
-    return {
+    # Include customer reviews for delivery personnel
+    customer_reviews = []
+    if current_user.type == "delivery":
+        customer_reviews = db.query(CustomerReview).filter(
+            CustomerReview.reviewer_id == current_user.ID
+        ).options(joinedload(CustomerReview.customer)).order_by(desc(CustomerReview.id)).all()
+    
+    result = {
         "dish_reviews": [
             DishReviewResponse(
                 id=r.id,
@@ -376,3 +384,207 @@ async def get_my_reviews(
         "total_dish_reviews": len(dish_reviews),
         "total_delivery_reviews": len(delivery_reviews)
     }
+    
+    # Add customer reviews if delivery person
+    if current_user.type == "delivery":
+        result["customer_reviews"] = [
+            CustomerReviewResponse(
+                id=r.id,
+                order_id=r.order_id,
+                customer_id=r.customer_id,
+                customer_email=r.customer.email if r.customer else None,
+                reviewer_id=r.reviewer_id,
+                rating=r.rating,
+                review_text=r.review_text,
+                was_polite=r.was_polite,
+                easy_to_find=r.easy_to_find,
+                created_at=r.created_at if isinstance(r.created_at, str) else (r.created_at.isoformat() if r.created_at else None)
+            )
+            for r in customer_reviews
+        ]
+        result["total_customer_reviews"] = len(customer_reviews)
+    
+    return result
+
+
+@router.get("/about-me")
+async def get_reviews_about_me(
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(get_current_user)
+):
+    """
+    Get all reviews about the current user (as a customer).
+    This endpoint returns reviews that delivery drivers have submitted about the customer.
+    """
+    reviews = db.query(CustomerReview).filter(
+        CustomerReview.customer_id == current_user.ID
+    ).options(joinedload(CustomerReview.reviewer)).order_by(desc(CustomerReview.id)).all()
+    
+    return {
+        "reviews": [
+            {
+                "id": r.id,
+                "order_id": r.order_id,
+                "reviewer_email": r.reviewer.email if r.reviewer else "Unknown",
+                "rating": r.rating,
+                "review_text": r.review_text,
+                "was_polite": r.was_polite,
+                "easy_to_find": r.easy_to_find,
+                "created_at": r.created_at if isinstance(r.created_at, str) else (r.created_at.isoformat() if r.created_at else None)
+            }
+            for r in reviews
+        ],
+        "total": len(reviews),
+        "average_rating": sum(r.rating for r in reviews) / len(reviews) if reviews else None
+    }
+
+
+def require_manager(current_user: Account = Depends(get_current_user)) -> Account:
+    """Require manager role"""
+    if current_user.type != "manager":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only managers can perform this action"
+        )
+    return current_user
+
+
+@router.get("/customer/all")
+async def get_all_customer_reviews(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(require_manager)
+):
+    """
+    Get all customer reviews (manager only).
+    This provides oversight of delivery driver feedback about customers.
+    """
+    total = db.query(func.count(CustomerReview.id)).scalar()
+    
+    reviews = db.query(CustomerReview).options(
+        joinedload(CustomerReview.customer),
+        joinedload(CustomerReview.reviewer)
+    ).order_by(desc(CustomerReview.created_at)).offset(offset).limit(limit).all()
+    
+    return {
+        "reviews": [
+            {
+                "id": r.id,
+                "order_id": r.order_id,
+                "customer_id": r.customer_id,
+                "customer_email": r.customer.email if r.customer else None,
+                "reviewer_id": r.reviewer_id,
+                "reviewer_email": r.reviewer.email if r.reviewer else None,
+                "rating": r.rating,
+                "review_text": r.review_text,
+                "was_polite": r.was_polite,
+                "easy_to_find": r.easy_to_find,
+                "created_at": r.created_at if isinstance(r.created_at, str) else (r.created_at.isoformat() if r.created_at else None)
+            }
+            for r in reviews
+        ],
+        "total": total,
+        "offset": offset,
+        "limit": limit
+    }
+
+
+def require_delivery_person(current_user: Account = Depends(get_current_user)) -> Account:
+    """Require delivery person role"""
+    if current_user.type != "delivery":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only delivery personnel can perform this action"
+        )
+    return current_user
+
+
+@router.post("/customer", response_model=CustomerReviewResponse, status_code=status.HTTP_201_CREATED)
+async def create_customer_review(
+    request: CustomerReviewCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(require_delivery_person)
+):
+    """
+    Create a review for a customer after delivering their order.
+    
+    - Only delivery personnel can review customers
+    - Order must be delivered by the current delivery person
+    - Can only review once per order
+    """
+    # Verify order exists
+    order = db.query(Order).filter(Order.id == request.order_id).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Check order status - must be delivered or at least assigned
+    if order.status not in ['assigned', 'in_transit', 'delivered']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only review customers for orders that have been delivered"
+        )
+    
+    # Verify this delivery person delivered the order
+    if not order.bidID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This order does not have an assigned delivery"
+        )
+    
+    bid = db.query(Bid).filter(Bid.id == order.bidID).first()
+    if not bid or bid.deliveryPersonID != current_user.ID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You did not deliver this order"
+        )
+    
+    # Check for existing review
+    existing = db.query(CustomerReview).filter(
+        CustomerReview.order_id == request.order_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already reviewed the customer for this order"
+        )
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Create review
+    review = CustomerReview(
+        order_id=request.order_id,
+        customer_id=order.accountID,
+        reviewer_id=current_user.ID,
+        rating=request.rating,
+        review_text=request.review_text,
+        was_polite=request.was_polite,
+        easy_to_find=request.easy_to_find,
+        created_at=now
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    
+    # Get customer email for response
+    customer = db.query(Account).filter(Account.ID == order.accountID).first()
+    
+    logger.info(f"Customer review created: order={request.order_id}, customer={order.accountID}, rating={request.rating}")
+    
+    return CustomerReviewResponse(
+        id=review.id,
+        order_id=review.order_id,
+        customer_id=review.customer_id,
+        customer_email=customer.email if customer else None,
+        reviewer_id=review.reviewer_id,
+        rating=review.rating,
+        review_text=review.review_text,
+        was_polite=review.was_polite,
+        easy_to_find=review.easy_to_find,
+        created_at=review.created_at
+    )

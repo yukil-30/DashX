@@ -16,6 +16,9 @@ interface Complaint {
   resolved_by: number | null;
   resolved_at: string | null;
   created_at: string | null;
+  disputed: boolean;
+  dispute_reason: string | null;
+  disputed_at: string | null;
 }
 
 interface ComplaintListResponse {
@@ -74,7 +77,7 @@ export function ManagerComplaints(_props: ManagerComplaintsProps) {
     fetchComplaints();
   }, [fetchComplaints]);
 
-  const handleResolve = async (resolution: 'dismissed' | 'warning_issued') => {
+  const handleResolve = async (resolution: 'dismissed' | 'warning_issued' | 'approved') => {
     if (!selectedComplaint) return;
     
     setResolving(true);
@@ -118,6 +121,9 @@ export function ManagerComplaints(_props: ManagerComplaintsProps) {
     if (status === 'pending') {
       return <span className="status-badge pending">Pending</span>;
     }
+    if (status === 'disputed') {
+      return <span className="status-badge disputed">Disputed</span>;
+    }
     if (resolution === 'dismissed') {
       return <span className="status-badge dismissed">Dismissed</span>;
     }
@@ -156,6 +162,7 @@ export function ManagerComplaints(_props: ManagerComplaintsProps) {
         >
           <option value="">All Status</option>
           <option value="pending">Pending</option>
+          <option value="disputed">Disputed</option>
           <option value="resolved">Resolved</option>
         </select>
         
@@ -257,6 +264,16 @@ export function ManagerComplaints(_props: ManagerComplaintsProps) {
                 
                 <dt>Status:</dt>
                 <dd>{getStatusBadge(selectedComplaint.status, selectedComplaint.resolution)}</dd>
+                
+                {selectedComplaint.disputed && selectedComplaint.dispute_reason && (
+                  <>
+                    <dt>Dispute Reason:</dt>
+                    <dd className="dispute-reason">{selectedComplaint.dispute_reason}</dd>
+                    
+                    <dt>Disputed On:</dt>
+                    <dd>{formatDate(selectedComplaint.disputed_at)}</dd>
+                  </>
+                )}
               </dl>
             </div>
             
@@ -265,9 +282,15 @@ export function ManagerComplaints(_props: ManagerComplaintsProps) {
               <p className="full-description">{selectedComplaint.description}</p>
             </div>
             
-            {selectedComplaint.status === 'pending' && selectedComplaint.type === 'complaint' && (
+            {(selectedComplaint.status === 'pending' || selectedComplaint.status === 'disputed') && selectedComplaint.type === 'complaint' && (
               <div className="resolve-section">
-                <h3>Resolve Complaint</h3>
+                <h3>{selectedComplaint.status === 'disputed' ? 'Resolve Disputed Complaint' : 'Resolve Complaint'}</h3>
+                
+                {selectedComplaint.status === 'disputed' && (
+                  <div className="dispute-notice">
+                    <p>⚠️ This complaint has been disputed by the target. Review carefully before resolving.</p>
+                  </div>
+                )}
                 
                 <div className="resolve-notes">
                   <label>Resolution Notes (optional):</label>
@@ -306,11 +329,56 @@ export function ManagerComplaints(_props: ManagerComplaintsProps) {
               </div>
             )}
             
+            {selectedComplaint.status === 'pending' && selectedComplaint.type === 'compliment' && (
+              <div className="resolve-section compliment-resolve">
+                <h3>Resolve Compliment</h3>
+                
+                <div className="resolve-notes">
+                  <label>Resolution Notes (optional):</label>
+                  <textarea
+                    value={resolveNotes}
+                    onChange={(e) => setResolveNotes(e.target.value)}
+                    placeholder="Add any notes about this resolution..."
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="resolve-actions">
+                  <button
+                    className="btn-approve-compliment"
+                    onClick={() => handleResolve('approved')}
+                    disabled={resolving}
+                    title="Approve compliment and apply benefits to the target"
+                  >
+                    {resolving ? '...' : '👍 Approve & Apply Benefits'}
+                  </button>
+                  
+                  <button
+                    className="btn-dismiss"
+                    onClick={() => handleResolve('dismissed')}
+                    disabled={resolving}
+                    title="Dismiss compliment without applying benefits"
+                  >
+                    {resolving ? '...' : '❌ Dismiss'}
+                  </button>
+                </div>
+                
+                <div className="resolve-help">
+                  <p><strong>Approve:</strong> Valid compliment. Benefits will be applied to the target user.</p>
+                  <p><strong>Dismiss:</strong> Dismiss without applying benefits (e.g., suspicious activity).</p>
+                </div>
+              </div>
+            )}
+            
             {resolveResult && (
-              <div className="resolve-result">
-                <h3>✅ Resolution Complete</h3>
+              <div className={`resolve-result ${resolveResult.resolution === 'dismissed' ? 'dismissed' : resolveResult.resolution === 'compliment_applied' ? 'compliment' : 'warning'}`}>
+                <h3>
+                  {resolveResult.resolution === 'dismissed' ? '🚫 Complaint Dismissed' : 
+                   resolveResult.resolution === 'compliment_applied' ? '🎉 Compliment Approved' :
+                   '⚠️ Warning Issued'}
+                </h3>
                 <p>{resolveResult.message}</p>
-                {resolveResult.warning_applied_to && (
+                {resolveResult.warning_applied_to && resolveResult.resolution !== 'compliment_applied' && (
                   <p>Warning applied to user #{resolveResult.warning_applied_to} (now has {resolveResult.warning_count} warnings)</p>
                 )}
                 {resolveResult.account_status_changed && (

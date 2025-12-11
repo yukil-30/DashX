@@ -1,15 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { ComplaintsList, WarningsBanner } from '../../components';
+import { ComplaintsList, WarningsBanner, RatingStars } from '../../components';
+import apiClient from '../../lib/api-client';
+
+interface CustomerReview {
+  id: number;
+  order_id: number;
+  customer_id: number;
+  customer_email: string | null;
+  reviewer_id: number;
+  rating: number;
+  review_text: string | null;
+  was_polite: boolean | null;
+  easy_to_find: boolean | null;
+  created_at: string | null;
+}
 
 export default function DeliveryComplaintsPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'filed' | 'against'>('against');
+  const [activeTab, setActiveTab] = useState<'filed' | 'against' | 'customer-reviews'>('against');
   const [showWarning, setShowWarning] = useState(true);
+  const [customerReviews, setCustomerReviews] = useState<CustomerReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   const warnings = user?.warnings || 0;
   const isNearThreshold = warnings >= 2;
+
+  useEffect(() => {
+    if (activeTab === 'customer-reviews') {
+      fetchCustomerReviews();
+    }
+  }, [activeTab]);
+
+  const fetchCustomerReviews = async () => {
+    setReviewsLoading(true);
+    try {
+      const response = await apiClient.get('/reviews/my-reviews');
+      setCustomerReviews(response.data.customer_reviews || []);
+    } catch (err) {
+      console.error('Failed to load customer reviews', err);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
 
   const getWarningMessage = () => {
     if (warnings >= 2) {
@@ -88,13 +122,85 @@ export default function DeliveryComplaintsPage() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Filed by You
+            Complaints Filed
+          </button>
+          <button
+            onClick={() => setActiveTab('customer-reviews')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'customer-reviews'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Customer Reviews
           </button>
         </nav>
       </div>
 
-      {/* Complaints List */}
-      <ComplaintsList mode={activeTab} showDispute={activeTab === 'against'} />
+      {/* Content based on tab */}
+      {activeTab === 'customer-reviews' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Customer Reviews You Filed
+            </h3>
+            <span className="text-sm text-gray-600">Total: {customerReviews.length}</span>
+          </div>
+
+          {reviewsLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            </div>
+          ) : customerReviews.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              You haven't reviewed any customers yet. You can review customers from your delivery history.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {customerReviews.map((review) => (
+                <div
+                  key={review.id}
+                  className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-400"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <RatingStars rating={review.rating} />
+                      <span className="text-sm font-medium">{review.rating}/5</span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {review.created_at ? new Date(review.created_at).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+
+                  <div className="text-sm text-gray-600 mb-2">
+                    <p>Customer: <span className="font-medium">{review.customer_email || `ID: ${review.customer_id}`}</span></p>
+                    <p>Order: #{review.order_id}</p>
+                  </div>
+
+                  {review.review_text && (
+                    <p className="text-gray-800 mb-3">{review.review_text}</p>
+                  )}
+
+                  <div className="flex gap-4 text-sm">
+                    {review.was_polite !== null && (
+                      <span className={review.was_polite ? 'text-green-600' : 'text-red-600'}>
+                        {review.was_polite ? '✓ Polite' : '✗ Not polite'}
+                      </span>
+                    )}
+                    {review.easy_to_find !== null && (
+                      <span className={review.easy_to_find ? 'text-green-600' : 'text-red-600'}>
+                        {review.easy_to_find ? '✓ Easy to find' : '✗ Hard to find'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <ComplaintsList mode={activeTab} showDispute={activeTab === 'against'} />
+      )}
 
       {/* Help Section */}
       <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">

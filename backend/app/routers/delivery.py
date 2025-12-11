@@ -17,7 +17,7 @@ from sqlalchemy import func, desc, and_
 
 from app.database import get_db
 from app.auth import get_current_user
-from app.models import Account, Order, OrderedDish, Bid, DeliveryRating, OrderDeliveryReview
+from app.models import Account, Order, OrderedDish, Bid, DeliveryRating, OrderDeliveryReview, CustomerReview
 from app.schemas import BidCreateRequest, BidResponse
 
 router = APIRouter(prefix="/delivery", tags=["Delivery"])
@@ -476,10 +476,16 @@ async def get_delivery_history(
     
     result = []
     for order in orders:
-        # Get delivery review if any
+        # Get delivery review if any (review OF the delivery person BY the customer)
         review = db.query(OrderDeliveryReview).filter(
             OrderDeliveryReview.order_id == order.id,
             OrderDeliveryReview.delivery_person_id == current_user.ID
+        ).first()
+        
+        # Get customer review if any (review OF the customer BY the delivery person)
+        customer_review = db.query(CustomerReview).filter(
+            CustomerReview.order_id == order.id,
+            CustomerReview.reviewer_id == current_user.ID
         ).first()
         
         # Get accepted bid
@@ -496,6 +502,7 @@ async def get_delivery_history(
         
         result.append({
             "order_id": order.id,
+            "customer_id": order.accountID,
             "customer_email": order.account.email if order.account else "Unknown",
             "delivery_address": order.delivery_address,
             "total_cents": order.finalCost,
@@ -507,7 +514,9 @@ async def get_delivery_history(
             "rating": review.rating if review else None,
             "review_text": review.review_text if review else None,
             "on_time": review.on_time if review else None,
-            "has_review": review is not None
+            "has_review": review is not None,
+            "has_reviewed_customer": customer_review is not None,
+            "can_review_customer": order.status in ['assigned', 'in_transit', 'delivered'] and customer_review is None
         })
     
     return {

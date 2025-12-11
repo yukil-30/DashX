@@ -6,10 +6,28 @@ import apiClient from '../../lib/api-client';
 import { CustomerDashboardResponse, DepositResponse } from '../../types/api';
 import { DishCard, RatingStars } from '../../components';
 
+interface CustomerReviewAboutMe {
+  id: number;
+  order_id: number;
+  reviewer_email: string;
+  rating: number;
+  review_text: string | null;
+  was_polite: boolean | null;
+  easy_to_find: boolean | null;
+  created_at: string | null;
+}
+
+interface ReviewsAboutMeResponse {
+  reviews: CustomerReviewAboutMe[];
+  total: number;
+  average_rating: number | null;
+}
+
 export default function CustomerDashboard() {
   const { user, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<CustomerDashboardResponse | null>(null);
+  const [reviewsAboutMe, setReviewsAboutMe] = useState<ReviewsAboutMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
@@ -17,9 +35,19 @@ export default function CustomerDashboard() {
 
   useEffect(() => {
     fetchDashboard();
+    fetchReviewsAboutMe();
     // Also refresh user profile to get latest VIP status
     refreshProfile();
   }, []);
+
+  const fetchReviewsAboutMe = async () => {
+    try {
+      const response = await apiClient.get<ReviewsAboutMeResponse>('/reviews/about-me');
+      setReviewsAboutMe(response.data);
+    } catch (err) {
+      console.error('Failed to fetch reviews about me:', err);
+    }
+  };
 
   const fetchDashboard = async () => {
     try {
@@ -161,7 +189,7 @@ const getBackendImage = (path: string | null) =>
               {depositing ? '...' : 'Deposit'}
             </button>
           </form>
-          <Link to="/account/transactions" className="text-sm text-primary-600 hover:underline mt-2 block">
+          <Link to="/customer/transactions" className="text-sm text-primary-600 hover:underline mt-2 block">
             View transactions →
           </Link>
         </div>
@@ -408,6 +436,53 @@ const getBackendImage = (path: string | null) =>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Reviews About Me */}
+      {reviewsAboutMe && reviewsAboutMe.reviews.length > 0 && (
+        <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
+              📝 Reviews from Delivery Drivers
+              {reviewsAboutMe.average_rating && (
+                <span className="text-sm font-normal text-gray-500">
+                  (Avg: {reviewsAboutMe.average_rating.toFixed(1)} ⭐)
+                </span>
+              )}
+            </h3>
+            <span className="text-sm text-gray-500">{reviewsAboutMe.total} review{reviewsAboutMe.total !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="space-y-4">
+            {reviewsAboutMe.reviews.slice(0, 5).map((review) => (
+              <div key={review.id} className="border-b border-gray-100 pb-4 last:border-0">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <RatingStars rating={review.rating} />
+                    <span className="text-sm text-gray-600">Order #{review.order_id}</span>
+                  </div>
+                  <span className="text-sm text-gray-400">
+                    {review.created_at ? new Date(review.created_at).toLocaleDateString() : ''}
+                  </span>
+                </div>
+                {review.review_text && (
+                  <p className="text-gray-700 mb-2">{review.review_text}</p>
+                )}
+                <div className="flex gap-4 text-sm">
+                  {review.was_polite !== null && (
+                    <span className={review.was_polite ? 'text-green-600' : 'text-red-600'}>
+                      {review.was_polite ? '✓ Polite' : '✗ Not polite'}
+                    </span>
+                  )}
+                  {review.easy_to_find !== null && (
+                    <span className={review.easy_to_find ? 'text-green-600' : 'text-red-600'}>
+                      {review.easy_to_find ? '✓ Easy to find' : '✗ Hard to find'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

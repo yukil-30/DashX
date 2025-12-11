@@ -281,7 +281,9 @@ const ImageSearchPage: React.FC = () => {
                     cost_formatted: dish.cost_formatted,
                     average_rating: dish.average_rating,
                     reviews: dish.reviews,
-                    picture: dish.picture,
+                    picture: dish.picture
+                      ? `http://localhost:8000/${encodeURI(dish.picture.replace(/^\/+/, ''))}`
+                      : null,
                     chefID: dish.chefID,
                     restaurantID: dish.restaurantID || 1,
                   }}

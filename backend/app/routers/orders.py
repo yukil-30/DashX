@@ -301,7 +301,8 @@ async def create_order(
         VIP_ORDERS_THRESHOLD = 3  # Or 3 orders
         
         # Check if customer should be upgraded to VIP
-        if current_user.type == "customer":
+        # Don't re-promote customers who were demoted from VIP
+        if current_user.type == "customer" and current_user.previous_type != "vip":
             meets_spend_threshold = current_user.total_spent_cents >= VIP_SPEND_THRESHOLD_CENTS
             meets_orders_threshold = current_user.completed_orders_count >= VIP_ORDERS_THRESHOLD
             

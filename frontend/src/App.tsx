@@ -29,6 +29,7 @@ import { ManagerEmployees } from './pages/manager/ManagerEmployees'
 import { ManagerDisputes } from './pages/manager/ManagerDisputes'
 import { ManagerBidding } from './pages/manager/ManagerBidding'
 import { ManagerKB } from './pages/manager/ManagerKB'
+import { ManagerCustomerReviews } from './pages/manager/ManagerCustomerReviews'
 
 // Customer Feature Pages
 import CustomerDashboard from './pages/customer/CustomerDashboard'
@@ -253,7 +254,7 @@ function AppRoutes() {
       <Route
         path="/customer/complaints"
         element={
-          user?.type === 'customer' ? <ComplaintsPage /> : <Navigate to="/auth/login" replace />
+          isCustomerOrVip ? <ComplaintsPage /> : <Navigate to="/auth/login" replace />
         }
       />
 
@@ -319,6 +320,16 @@ function AppRoutes() {
         element={
           user?.type === 'manager' ? (
             <ManagerComplaints />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/manager/customer-reviews"
+        element={
+          user?.type === 'manager' ? (
+            <ManagerCustomerReviews />
           ) : (
             <Navigate to="/" replace />
           )

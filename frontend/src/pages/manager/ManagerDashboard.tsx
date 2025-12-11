@@ -212,6 +212,10 @@ export function ManagerDashboard() {
             <span className="action-icon">📚</span>
             <span>Manage KB</span>
           </Link>
+          <Link to="/manager/customer-reviews" className="quick-action-btn">
+            <span className="action-icon">📝</span>
+            <span>Customer Reviews</span>
+          </Link>
         </div>
       </section>
     </div>

@@ -35,6 +35,16 @@ export default function HomePage() {
     toast.success(`${dish.name} added to cart!`);
   };
 
+  // Helper to build full image URLs for backend-hosted images
+  const transformDishImages = (dishes: any[]) => {
+    return dishes.map(d => ({
+      ...d,
+      picture: d.picture
+        ? `http://localhost:8000/${encodeURI(d.picture.replace(/^\/+/, ''))}`
+        : ''
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -89,7 +99,7 @@ export default function HomePage() {
             </Link>
           </div>
           <DishGrid
-            dishes={data.most_ordered}
+            dishes={transformDishImages(data.most_ordered)}
             onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
           />
         </section>
@@ -107,7 +117,7 @@ export default function HomePage() {
             </Link>
           </div>
           <DishGrid
-            dishes={data.top_rated}
+            dishes={transformDishImages(data.top_rated)}
             onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
           />
         </section>

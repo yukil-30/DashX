@@ -18,7 +18,8 @@ export default function TransactionsPage() {
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      let url = `/account/transactions?page=${page}&limit=20`;
+      const offset = (page - 1) * 20;
+      let url = `/account/transactions?offset=${offset}&limit=20`;
       if (filter) {
         url += `&transaction_type=${filter}`;
       }

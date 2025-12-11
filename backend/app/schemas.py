@@ -1096,6 +1096,32 @@ class DeliveryReviewResponse(BaseModel):
         from_attributes = True
 
 
+class CustomerReviewCreateRequest(BaseModel):
+    """Request to create a customer review (by delivery driver)"""
+    order_id: int = Field(..., description="Order ID to review customer for")
+    rating: int = Field(..., ge=1, le=5, description="Rating from 1-5")
+    review_text: Optional[str] = Field(None, max_length=2000)
+    was_polite: Optional[bool] = Field(None, description="Was the customer polite?")
+    easy_to_find: Optional[bool] = Field(None, description="Was the address easy to find?")
+
+
+class CustomerReviewResponse(BaseModel):
+    """Customer review response"""
+    id: int
+    order_id: int
+    customer_id: int
+    customer_email: Optional[str] = None
+    reviewer_id: int
+    rating: int
+    review_text: Optional[str]
+    was_polite: Optional[bool]
+    easy_to_find: Optional[bool]
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
 # ============================================================
 # Forum Schemas (Enhanced)
 # ============================================================
