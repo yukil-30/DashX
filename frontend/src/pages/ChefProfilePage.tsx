@@ -6,19 +6,19 @@ import { ChefProfile } from '../types/api';
 import { DishCard, RatingStars } from '../components';
 
 export default function ChefProfilePage() {
-  const { chefId } = useParams<{ chefId: string }>();
+  const { id } = useParams<{ id: string }>();
   const [chef, setChef] = useState<ChefProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (chefId) {
+    if (id) {
       fetchChefProfile();
     }
-  }, [chefId]);
+  }, [id]);
 
   const fetchChefProfile = async () => {
     try {
-      const response = await apiClient.get<ChefProfile>(`/profiles/chefs/${chefId}`);
+      const response = await apiClient.get<ChefProfile>(`/profiles/chefs/${id}`);
       setChef(response.data);
     } catch (err: any) {
       toast.error('Chef not found');

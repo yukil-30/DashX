@@ -126,7 +126,7 @@ function Navigation() {
             )}
 
             {/* Public Links */}
-            <Link to="/chefs" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
+            <Link to="/profiles/chefs" className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 hover:scale-105">
               <span className="hidden sm:inline">Chefs</span>
               <span className="sm:hidden text-xl">👨‍🍳</span>
             </Link>
@@ -258,8 +258,8 @@ function AppRoutes() {
       />
 
       {/* Public Profile Routes */}
-      <Route path="/chefs" element={<ChefsListPage />} />
-      <Route path="/chefs/:id" element={<ChefProfilePage />} />
+      <Route path="/profiles/chefs" element={<ChefsListPage />} />
+      <Route path="/profiles/chefs/:id" element={<ChefProfilePage />} />
       <Route path="/forum" element={<ForumPage />} />
       <Route path="/forum/:threadId" element={<ThreadDetailPage />} />
 

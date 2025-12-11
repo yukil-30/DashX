@@ -236,7 +236,7 @@ const getBackendImage = (path: string | null) =>
               <span className="font-medium">{vip_status.total_spent_formatted}</span>
             </div>
           </div>
-          <Link to="/orders/history" className="text-sm text-primary-600 hover:underline mt-4 block">
+          <Link to="/customer/orders" className="text-sm text-primary-600 hover:underline mt-4 block">
             View order history →
           </Link>
         </div>
@@ -353,7 +353,7 @@ const getBackendImage = (path: string | null) =>
         <div className="bg-white rounded-xl shadow-md p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold text-gray-700">Recent Orders</h3>
-            <Link to="/orders/history" className="text-primary-600 hover:underline">
+            <Link to="/customer/orders" className="text-primary-600 hover:underline">
               View all →
             </Link>
           </div>
@@ -390,14 +390,14 @@ const getBackendImage = (path: string | null) =>
                     </td>
                     <td className="py-3 px-4">
                       <Link
-                        to={`/orders/${order.id}`}
+                        to="/customer/orders"
                         className="text-primary-600 hover:underline text-sm"
                       >
                         View
                       </Link>
                       {order.can_review && (
                         <Link
-                          to={`/orders/history`}
+                          to="/customer/orders"
                           className="text-green-600 hover:underline text-sm ml-3"
                         >
                           Review
