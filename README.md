@@ -1061,7 +1061,7 @@ curl -X PATCH http://localhost:8000/complaints/1/resolve \
 | User Type | Warning Threshold | Consequence |
 |-----------|-------------------|-------------|
 | Customer | 3 warnings | Deregistered and blacklisted |
-| VIP | 2 warnings | Demoted to regular customer, warnings cleared |
+| VIP | 3 warnings | Demoted to regular customer, warnings cleared |
 | Chef | 3 complaints OR rating <2.0 | Demoted (10% wage reduction) |
 | Chef | Demoted twice | Fired |
 

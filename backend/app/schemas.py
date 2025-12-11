@@ -124,6 +124,7 @@ class DishBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Dish name")
     description: Optional[str] = Field(None, max_length=2000, description="Dish description")
     cost: int = Field(..., gt=0, le=100_000_00, description="Cost in cents (max $1000)")
+    is_specialty: bool = Field(False, description="VIP-only specialty dish")
     
     @field_validator("name")
     @classmethod
@@ -159,6 +160,7 @@ class DishUpdateRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=2000)
     cost: Optional[int] = Field(None, gt=0, le=100_000_00)
     picture: Optional[str] = None
+    is_specialty: Optional[bool] = Field(None, description="VIP-only specialty dish")
 
 
 class DishResponse(BaseModel):
@@ -173,6 +175,7 @@ class DishResponse(BaseModel):
     reviews: int
     chefID: Optional[int]
     restaurantID: int
+    is_specialty: bool = False  # VIP-only specialty dish
 
     class Config:
         from_attributes = True

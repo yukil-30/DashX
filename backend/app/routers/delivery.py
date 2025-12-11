@@ -373,12 +373,17 @@ async def mark_order_delivered(
     """
     Mark an assigned order as delivered.
     Only the assigned delivery person can mark as delivered.
+    Requires all dishes to be marked as prepared by their respective chefs.
     """
+    from app.models import Dish, AuditLog
+    
     now = datetime.now(timezone.utc)
     now_str = now.isoformat()
     
-    # Get order
-    order = db.query(Order).filter(Order.id == order_id).first()
+    # Get order with ordered dishes
+    order = db.query(Order).options(
+        joinedload(Order.ordered_dishes).joinedload(OrderedDish.dish)
+    ).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -405,6 +410,47 @@ async def mark_order_delivered(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Order cannot be marked as delivered. Current status: {order.status}"
         )
+    
+    # Verify all dishes have been marked as prepared by their respective chefs
+    # Get all dish IDs in this order and their chef IDs
+    dish_chef_map = {}  # dish_id -> chef_id
+    for od in order.ordered_dishes:
+        if od.dish:
+            dish_chef_map[od.DishID] = od.dish.chefID
+    
+    if dish_chef_map:
+        # Get all unique chefs
+        chef_ids = set(dish_chef_map.values())
+        
+        # For each chef, check if they have marked their dishes as prepared
+        for chef_id in chef_ids:
+            chef_dish_ids = [did for did, cid in dish_chef_map.items() if cid == chef_id]
+            
+            # Query audit logs for this chef's prepared marks on this order
+            logs = db.query(AuditLog).filter(
+                AuditLog.action_type == 'chef_mark_prepared',
+                AuditLog.actor_id == chef_id,
+                AuditLog.order_id == order.id
+            ).all()
+            
+            # Collect all prepared dish IDs from logs
+            prepared_ids = set()
+            for log in logs:
+                try:
+                    details = log.details or {}
+                    prepared = details.get('prepared_dish_ids', [])
+                    for pid in prepared:
+                        prepared_ids.add(pid)
+                except Exception:
+                    continue
+            
+            # Check if all of this chef's dishes in the order are prepared
+            unprepared = [did for did in chef_dish_ids if did not in prepared_ids]
+            if unprepared:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot mark as delivered: not all dishes have been marked as prepared by their chefs"
+                )
     
     # Update order
     order.status = "delivered"

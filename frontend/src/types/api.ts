@@ -10,6 +10,7 @@ export interface Dish {
   reviews: number;
   chefID: number | null;
   restaurantID: number;
+  is_specialty: boolean;
 }
 
 export interface DishListResponse {

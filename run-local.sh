@@ -146,6 +146,15 @@ else
     echo -e "${YELLOW}   (This is normal if data was already seeded)${NC}"
 fi
 
+# Seed knowledge base data
+echo -e ""
+echo -e "${YELLOW}Seeding knowledge base...${NC}"
+if cat backend/sql/seed_knowledge_base.sql | docker-compose exec -T postgres psql -U restaurant_user -d restaurant_db > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Knowledge base seeded${NC}"
+else
+    echo -e "${YELLOW}   (Knowledge base may already be seeded)${NC}"
+fi
+
 echo -e ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}✅ All services are running!${NC}"

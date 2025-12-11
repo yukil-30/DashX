@@ -92,6 +92,7 @@ class Dish(Base):
     average_rating = Column(Numeric(3, 2), nullable=True, default=0.00)
     reviews = Column(Integer, nullable=False, default=0)
     chefID = Column(Integer, ForeignKey("accounts.ID", ondelete="SET NULL"), nullable=True)
+    is_specialty = Column(Boolean, nullable=False, default=False)  # VIP-only specialty dishes
 
     __table_args__ = (
         CheckConstraint('cost >= 0', name='check_dish_cost_positive'),

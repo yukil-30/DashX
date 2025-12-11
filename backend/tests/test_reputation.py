@@ -5,7 +5,7 @@ Covers:
 - Manager resolution (dismiss vs warning)
 - Warning count changes
 - Customer warnings -> blacklisted (3 warnings)
-- VIP warnings -> demoted to customer (2 warnings)
+- VIP warnings -> demoted to customer (3 warnings)
 - Chef complaints/ratings -> demotion/firing
 - Compliment cancellation of complaints
 - Audit log creation
@@ -448,12 +448,12 @@ class TestWarningThresholds:
         assert result is None
         assert mock_customer.is_blacklisted == False
 
-    def test_vip_demoted_at_2_warnings(self):
-        """Test that VIP is demoted to customer at 2 warnings"""
+    def test_vip_demoted_at_3_warnings(self):
+        """Test that VIP is demoted to customer at 3 warnings"""
         from app.routers.reputation import check_and_apply_customer_warning_rules
         
         mock_db = create_mock_db()
-        mock_vip = create_mock_user(ID=2, type="vip", warnings=2)
+        mock_vip = create_mock_user(ID=2, type="vip", warnings=3)
         
         result = check_and_apply_customer_warning_rules(mock_db, mock_vip, manager_id=100)
         
@@ -462,12 +462,12 @@ class TestWarningThresholds:
         assert mock_vip.warnings == 0  # Warnings cleared
         assert mock_vip.previous_type == "vip"
 
-    def test_vip_not_demoted_under_2_warnings(self):
-        """Test that VIP is NOT demoted with < 2 warnings"""
+    def test_vip_not_demoted_under_3_warnings(self):
+        """Test that VIP is NOT demoted with < 3 warnings"""
         from app.routers.reputation import check_and_apply_customer_warning_rules
         
         mock_db = create_mock_db()
-        mock_vip = create_mock_user(ID=2, type="vip", warnings=1)
+        mock_vip = create_mock_user(ID=2, type="vip", warnings=2)
         
         result = check_and_apply_customer_warning_rules(mock_db, mock_vip, manager_id=100)
         

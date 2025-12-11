@@ -47,7 +47,8 @@ def dish_to_response(dish: Dish) -> DishResponse:
         average_rating=float(dish.average_rating or 0),
         reviews=dish.reviews,
         chefID=dish.chefID,
-        restaurantID=dish.restaurantID
+        restaurantID=dish.restaurantID,
+        is_specialty=dish.is_specialty or False
     )
 
 

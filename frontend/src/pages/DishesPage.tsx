@@ -168,6 +168,7 @@ const getImageUrl = (path?: string) => {
         loading={loading}
         emptyMessage={getEmptyMessage()}
         onAddToCart={isCustomerOrVip ? handleAddToCart : undefined}
+        isVip={user?.type === 'vip'}
       />
       {data && data.total_pages > 1 && (
         <div className="mt-12 flex justify-center items-center gap-2">

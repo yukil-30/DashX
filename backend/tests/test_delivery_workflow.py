@@ -403,15 +403,29 @@ class TestMarkDelivered:
     """Test POST /delivery/orders/{id}/mark-delivered endpoint"""
 
     def test_mark_delivered_success(self):
-        """Test successful delivery completion"""
+        """Test successful delivery completion when all dishes are prepared"""
+        from app.models import Dish, AuditLog, OrderedDish
+        
         mock_user = create_mock_delivery_user(ID=10)
         mock_db = create_mock_db()
         
         mock_bid = create_mock_bid(id=1, deliveryPersonID=10)
+        
+        # Create mock dish with chef
+        mock_dish = MagicMock(spec=Dish)
+        mock_dish.id = 100
+        mock_dish.chefID = 50
+        
+        # Create mock ordered dish
+        mock_ordered_dish = MagicMock(spec=OrderedDish)
+        mock_ordered_dish.DishID = 100
+        mock_ordered_dish.dish = mock_dish
+        
         mock_order = create_mock_order(
             status="assigned",
             bidID=1
         )
+        mock_order.ordered_dishes = [mock_ordered_dish]
         
         mock_rating = MagicMock(spec=DeliveryRating)
         mock_rating.accountID = 10
@@ -421,13 +435,20 @@ class TestMarkDelivered:
         mock_rating.on_time_deliveries = 8
         
         order_query = MagicMock()
-        order_query.filter.return_value.first.return_value = mock_order
+        order_query.options.return_value.filter.return_value.first.return_value = mock_order
         
         bid_query = MagicMock()
         bid_query.filter.return_value.first.return_value = mock_bid
         
         rating_query = MagicMock()
         rating_query.filter.return_value.first.return_value = mock_rating
+        
+        # Simulate chef having marked the dish as prepared
+        mock_audit_log = MagicMock(spec=AuditLog)
+        mock_audit_log.details = {"prepared_dish_ids": [100]}
+        
+        audit_query = MagicMock()
+        audit_query.filter.return_value.all.return_value = [mock_audit_log]
         
         def query_side_effect(model):
             if model is Order:
@@ -436,6 +457,8 @@ class TestMarkDelivered:
                 return bid_query
             elif model is DeliveryRating:
                 return rating_query
+            elif model is AuditLog:
+                return audit_query
             return MagicMock()
         
         mock_db.query.side_effect = query_side_effect
@@ -488,6 +511,72 @@ class TestMarkDelivered:
             
             assert response.status_code == 403
             assert "not the assigned delivery person" in response.json()["detail"].lower()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_mark_delivered_requires_prepared(self):
+        """Test that delivery cannot be marked if dishes are not prepared by chefs"""
+        from app.models import Dish, AuditLog, OrderedDish
+        
+        mock_user = create_mock_delivery_user(ID=10)
+        mock_db = create_mock_db()
+        
+        mock_bid = create_mock_bid(id=1, deliveryPersonID=10)
+        
+        # Create mock dish with chef
+        mock_dish = MagicMock(spec=Dish)
+        mock_dish.id = 100
+        mock_dish.chefID = 50
+        
+        # Create mock ordered dish
+        mock_ordered_dish = MagicMock(spec=OrderedDish)
+        mock_ordered_dish.DishID = 100
+        mock_ordered_dish.dish = mock_dish
+        
+        mock_order = create_mock_order(
+            status="assigned",
+            bidID=1
+        )
+        mock_order.ordered_dishes = [mock_ordered_dish]
+        
+        mock_rating = MagicMock(spec=DeliveryRating)
+        mock_rating.accountID = 10
+        mock_rating.total_deliveries = 10
+        
+        order_query = MagicMock()
+        order_query.options.return_value.filter.return_value.first.return_value = mock_order
+        
+        bid_query = MagicMock()
+        bid_query.filter.return_value.first.return_value = mock_bid
+        
+        rating_query = MagicMock()
+        rating_query.filter.return_value.first.return_value = mock_rating
+        
+        # No audit logs for prepared dishes (chef hasn't marked as prepared)
+        audit_query = MagicMock()
+        audit_query.filter.return_value.all.return_value = []
+        
+        def query_side_effect(model):
+            if model is Order:
+                return order_query
+            elif model is Bid:
+                return bid_query
+            elif model is DeliveryRating:
+                return rating_query
+            elif model is AuditLog:
+                return audit_query
+            return MagicMock()
+        
+        mock_db.query.side_effect = query_side_effect
+        
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
+        
+        try:
+            response = client.post("/delivery/orders/1/mark-delivered")
+            
+            assert response.status_code == 400
+            assert "not all dishes have been marked as prepared" in response.json()["detail"].lower()
         finally:
             app.dependency_overrides.clear()
 

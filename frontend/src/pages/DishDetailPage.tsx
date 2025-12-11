@@ -132,7 +132,14 @@ export default function DishDetailPage() {
         </div>
 
         <div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">{dish.name}</h1>
+          <div className="flex items-center gap-3 mb-4">
+            <h1 className="text-4xl font-bold text-gray-900">{dish.name}</h1>
+            {dish.is_specialty && (
+              <span className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white text-sm font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1">
+                👑 VIP Exclusive
+              </span>
+            )}
+          </div>
 
           <div className="flex items-center gap-4 mb-6">
             <RatingStars rating={dish.average_rating} size="lg" />
@@ -154,8 +161,21 @@ export default function DishDetailPage() {
             </div>
           )}
 
-          {/* ✅ FIXED: Allow both customers and VIPs to add to cart */}
-          {isCustomerOrVip && (
+          {/* VIP-only specialty dish notice for non-VIP customers */}
+          {isCustomerOrVip && dish.is_specialty && user?.type !== 'vip' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <p className="text-amber-800 flex items-center gap-2">
+                <span className="text-xl">👑</span>
+                <span>
+                  This is a <strong>VIP-exclusive specialty dish</strong>. 
+                  Upgrade to VIP status to order this item!
+                </span>
+              </p>
+            </div>
+          )}
+
+          {/* ✅ FIXED: Allow both customers and VIPs to add to cart, but block specialty dishes for non-VIPs */}
+          {isCustomerOrVip && !(dish.is_specialty && user?.type !== 'vip') && (
             <div className="mb-8">
               <div className="flex items-center gap-4 mb-4">
                 <label htmlFor="quantity" className="text-gray-700 font-medium">

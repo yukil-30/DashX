@@ -188,9 +188,10 @@ SELECT setval('"accounts_ID_seq"', 11, true);
 -- DISHES
 -- =============================================================================
 -- 5 dishes with varied costs for testing
+-- Dishes 3 and 5 are VIP-only specialty dishes
 
 -- Dish 1: Signature Burger (by Chef Gordon)
-INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID")
+INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID", is_specialty)
 VALUES (
     1,
     1,
@@ -200,11 +201,12 @@ VALUES (
     '/images/dishes/signature-burger.jpg',
     4.75,
     48,
-    2
+    2,
+    false
 );
 
 -- Dish 2: Truffle Fries (by Chef Julia)
-INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID")
+INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID", is_specialty)
 VALUES (
     2,
     1,
@@ -214,25 +216,27 @@ VALUES (
     '/images/dishes/truffle-fries.jpg',
     4.50,
     72,
-    3
+    3,
+    false
 );
 
--- Dish 3: Grilled Salmon (by Chef Gordon)
-INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID")
+-- Dish 3: Grilled Salmon (by Chef Gordon) - VIP SPECIALTY
+INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID", is_specialty)
 VALUES (
     3,
     1,
     'Atlantic Grilled Salmon',
-    'Fresh Atlantic salmon fillet, grilled to perfection with lemon butter sauce, served with seasonal vegetables and rice pilaf.',
+    'Fresh Atlantic salmon fillet, grilled to perfection with lemon butter sauce, served with seasonal vegetables and rice pilaf. VIP exclusive specialty dish.',
     2499,  -- $24.99
     '/images/dishes/grilled-salmon.jpg',
     4.80,
     35,
-    2
+    2,
+    true
 );
 
 -- Dish 4: Caesar Salad (by Chef Julia)
-INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID")
+INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID", is_specialty)
 VALUES (
     4,
     1,
@@ -242,21 +246,23 @@ VALUES (
     '/images/dishes/caesar-salad.jpg',
     4.20,
     55,
-    3
+    3,
+    false
 );
 
--- Dish 5: Chocolate Lava Cake (by Chef Julia)
-INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID")
+-- Dish 5: Chocolate Lava Cake (by Chef Julia) - VIP SPECIALTY
+INSERT INTO dishes (id, "restaurantID", name, description, cost, picture, average_rating, reviews, "chefID", is_specialty)
 VALUES (
     5,
     1,
     'Molten Chocolate Lava Cake',
-    'Warm chocolate cake with a gooey molten center, served with vanilla ice cream and fresh berries.',
+    'Warm chocolate cake with a gooey molten center, served with vanilla ice cream and fresh berries. VIP exclusive specialty dish.',
     999,   -- $9.99
     '/images/dishes/chocolate-lava.jpg',
     4.90,
     88,
-    3
+    3,
+    true
 );
 
 -- Reset sequence for dishes

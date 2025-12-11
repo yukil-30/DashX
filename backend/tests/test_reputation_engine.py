@@ -8,7 +8,7 @@ Business Rules Tested:
 3. 3 compliments OR avg > 4 → bonus (salary increase)
 4. Compliment cancels complaint 1:1
 5. Two demotions → fired
-6. VIP with 2 warnings → demote to customer, reset warnings
+6. VIP with 3 warnings → demote to customer, reset warnings
 7. Customer with 3 warnings → deregistered/blacklisted
 8. Dismissed complaint adds warning to filer
 """
@@ -315,13 +315,13 @@ class TestFiringRules:
 class TestVIPRules:
     """Test VIP-specific warning rules"""
 
-    def test_vip_with_2_warnings_demoted(self):
-        """VIP with 2 warnings should be demoted to customer"""
+    def test_vip_with_3_warnings_demoted(self):
+        """VIP with 3 warnings should be demoted to customer"""
         vip = create_mock_account(
             ID=1, 
             type="vip",
             customer_tier="vip",
-            warnings=2
+            warnings=3
         )
         mock_db = create_mock_db()
         
@@ -334,13 +334,13 @@ class TestVIPRules:
         assert vip.previous_type == "vip"
         assert result.get("vip_downgraded") == True or result.get("vip_demoted") == True
 
-    def test_vip_with_1_warning_not_demoted(self):
-        """VIP with 1 warning should not be demoted"""
+    def test_vip_with_2_warnings_not_demoted(self):
+        """VIP with 2 warnings should not be demoted"""
         vip = create_mock_account(
             ID=1, 
             type="vip",
             customer_tier="vip",
-            warnings=1
+            warnings=2
         )
         mock_db = create_mock_db()
         

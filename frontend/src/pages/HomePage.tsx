@@ -100,7 +100,8 @@ export default function HomePage() {
           </div>
           <DishGrid
             dishes={transformDishImages(data.most_ordered)}
-            onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
+            onAddToCart={(user?.type === 'customer' || user?.type === 'vip') ? handleAddToCart : undefined}
+            isVip={user?.type === 'vip'}
           />
         </section>
       )}
@@ -118,7 +119,8 @@ export default function HomePage() {
           </div>
           <DishGrid
             dishes={transformDishImages(data.top_rated)}
-            onAddToCart={user?.type === 'customer' ? handleAddToCart : undefined}
+            onAddToCart={(user?.type === 'customer' || user?.type === 'vip') ? handleAddToCart : undefined}
+            isVip={user?.type === 'vip'}
           />
         </section>
       )}

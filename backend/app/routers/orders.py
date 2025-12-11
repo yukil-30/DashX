@@ -298,6 +298,16 @@ async def create_order(
                 detail=f"Dish with id {item.dish_id} not found"
             )
     
+    # Check VIP-only specialty dishes
+    is_vip = current_user.type == "vip"
+    for item in order_request.items:
+        dish = dish_map[item.dish_id]
+        if dish.is_specialty and not is_vip:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"'{dish.name}' is a VIP-exclusive specialty dish. Upgrade to VIP to order this item."
+            )
+    
     # Calculate subtotal
     subtotal_cents = sum(
         dish_map[item.dish_id].cost * item.qty 
@@ -305,7 +315,6 @@ async def create_order(
     )
     
     # Calculate VIP discount
-    is_vip = current_user.type == "vip"
     discount_cents = 0
     if is_vip:
         discount_cents = (subtotal_cents * VIP_DISCOUNT_PERCENT) // 100

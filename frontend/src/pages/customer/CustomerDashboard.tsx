@@ -173,7 +173,7 @@ const getBackendImage = (path: string | null) =>
               </h3>
               <p className={userWarnings >= warningThreshold ? 'text-red-700 mb-2' : 'text-yellow-700 mb-2'}>
                 {userWarnings} warning{userWarnings === 1 ? '' : 's'} 
-                {isVIP ? ' (VIPs with 2 warnings are demoted to customer)' : ' (customers with 3 warnings are deregistered)'}
+                {isVIP ? ' (VIPs with 3 warnings are demoted to customer)' : ' (customers with 3 warnings are deregistered)'}
               </p>
               {userWarnings >= warningThreshold && (
                 <p className={`text-sm ${userWarnings >= warningThreshold ? 'text-red-600' : 'text-yellow-600'}`}>

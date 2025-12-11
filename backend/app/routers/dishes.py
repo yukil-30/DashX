@@ -55,7 +55,8 @@ def dish_to_response(dish: Dish) -> DishResponse:
         average_rating=float(dish.average_rating or 0),
         reviews=dish.reviews,
         chefID=dish.chefID,
-        restaurantID=dish.restaurantID
+        restaurantID=dish.restaurantID,
+        is_specialty=dish.is_specialty or False
     )
 
 
@@ -255,7 +256,8 @@ async def create_dish(
         cost=dish_data.cost,   # already in cents
         picture=image_path,
         average_rating=Decimal("0.00"),
-        reviews=0
+        reviews=0,
+        is_specialty=dish_data.is_specialty
     )
 
     db.add(dish)

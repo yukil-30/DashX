@@ -1,7 +1,6 @@
 """
 Reviews Router
-Handles dish reviews and delivery reviews for completed orders.
-UPDATED: Allow reviews on 'paid' orders for testing/development
+Handles dish reviews and delivery reviews for completed (delivered) orders.
 Integrates with reputation engine for automatic rule evaluation.
 """
 
@@ -39,11 +38,10 @@ async def create_dish_review(
     current_user: Account = Depends(get_current_user)
 ):
     """
-    Create a review for a dish from a completed order.
+    Create a review for a dish from a delivered order.
     
-    UPDATED: Allow reviews on 'paid' orders (not just delivered)
     - User must have ordered this dish
-    - Order must be paid or delivered
+    - Order must be delivered
     - Can only review once per dish per order
     """
     # Verify order exists and belongs to user
@@ -58,11 +56,11 @@ async def create_dish_review(
             detail="Order not found"
         )
     
-    # UPDATED: Allow reviews for 'paid' orders (not just delivered)
-    if order.status not in ['paid', 'assigned', 'in_transit', 'delivered']:
+    # Only allow reviews for delivered orders
+    if order.status != 'delivered':
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only review dishes from paid or delivered orders"
+            detail="Can only review dishes from delivered orders"
         )
     
     # Verify dish was in the order
@@ -210,10 +208,9 @@ async def create_delivery_review(
     current_user: Account = Depends(get_current_user)
 ):
     """
-    Create a review for delivery on a completed order.
+    Create a review for delivery on a delivered order.
     
-    UPDATED: Allow delivery reviews on assigned/in_transit orders for testing
-    - Order must be assigned, in_transit, or delivered
+    - Order must be delivered
     - Order must have an assigned delivery person
     - Can only review once per order
     """
@@ -229,11 +226,11 @@ async def create_delivery_review(
             detail="Order not found"
         )
     
-    # UPDATED: Allow reviews for assigned/in_transit orders too
-    if order.status not in ['assigned', 'in_transit', 'delivered']:
+    # Only allow reviews for delivered orders
+    if order.status != 'delivered':
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only review delivery for orders with assigned delivery"
+            detail="Can only review delivery for delivered orders"
         )
     
     if not order.bidID:

@@ -5,7 +5,7 @@ Tests cover:
 - Complaint filing (customer vs chef, customer vs delivery, delivery vs customer)
 - Compliment filing
 - Dispute flow
-- Warning system (3 warnings = blacklist, VIP 2 warnings = demote + clear)
+- Warning system (3 warnings = blacklist, VIP 3 warnings = demote + clear)
 - Complaint dismissed = filer gets warning
 - HR stats integration
 """
