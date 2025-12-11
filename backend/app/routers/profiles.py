@@ -159,6 +159,8 @@ async def get_profile_by_id(user_id: int, db: Session) -> ProfileResponse:
         account_id=account.ID,
         email=account.email,
         account_type=account.type,
+        warnings=account.warnings,
+        customer_tier=account.customer_tier,
         display_name=profile.display_name if profile else None,
         bio=profile.bio if profile else None,
         profile_picture=profile.profile_picture if profile else None,

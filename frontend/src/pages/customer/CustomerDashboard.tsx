@@ -32,6 +32,7 @@ export default function CustomerDashboard() {
   const [error, setError] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
   const [depositing, setDepositing] = useState(false);
+  const [deregisterInProgress, setDeregisterInProgress] = useState(false);
 
   useEffect(() => {
     fetchDashboard();
@@ -96,6 +97,24 @@ const getBackendImage = (path: string | null) =>
     }
   };
 
+  const handleDeregister = async () => {
+    if (!confirm('Are you sure you want to deregister your account? This will be sent to the manager for approval.')) {
+      return;
+    }
+
+    setDeregisterInProgress(true);
+    try {
+      const response = await apiClient.post('/account/deregister');
+      toast.success('Deregistration request submitted. Manager will review and close your account.');
+      // Optionally redirect after deregistering
+      setTimeout(() => navigate('/'), 2000);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to submit deregistration request');
+    } finally {
+      setDeregisterInProgress(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -116,6 +135,16 @@ const getBackendImage = (path: string | null) =>
 
   const { vip_status } = dashboard;
   const isVIP = vip_status.is_vip || user?.type === 'vip';
+  const userWarnings = user?.warnings || 0;
+  const warningThreshold = isVIP ? 2 : 3;
+  const showWarning = userWarnings > 0;
+
+  // Free delivery progress: compute number of completed orders modulo 3 (0..2)
+  // We only show the spark-bar when there are NO free delivery credits available.
+  const FREE_DELIVERY_TARGET = 3;
+  const completedOrders = vip_status.completed_orders || 0;
+  const freeDeliveryCredits = vip_status.free_delivery_credits || 0;
+  const freeDeliveryProgress = completedOrders % FREE_DELIVERY_TARGET; // 0..2 (filled slots)
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -124,6 +153,44 @@ const getBackendImage = (path: string | null) =>
         <h1 className="text-4xl font-bold text-gray-900">Customer Dashboard</h1>
         <p className="text-gray-600 mt-2">Welcome back, {dashboard.email}</p>
       </div>
+
+      {/* Warnings Banner */}
+      {showWarning && (
+        <div className={`mb-8 rounded-xl p-6 shadow-lg border-2 ${
+          userWarnings >= warningThreshold
+            ? 'bg-red-50 border-red-300'
+            : 'bg-yellow-50 border-yellow-300'
+        }`}>
+          <div className="flex items-center gap-4">
+            <span className="text-5xl">{userWarnings >= warningThreshold ? '🚨' : '⚠️'}</span>
+            <div className="flex-1">
+              <h3 className={`text-2xl font-bold mb-2 ${
+                userWarnings >= warningThreshold ? 'text-red-800' : 'text-yellow-800'
+              }`}>
+                {userWarnings >= warningThreshold
+                  ? 'Account Status Warning'
+                  : 'You Have Warnings'}
+              </h3>
+              <p className={userWarnings >= warningThreshold ? 'text-red-700 mb-2' : 'text-yellow-700 mb-2'}>
+                {userWarnings} warning{userWarnings === 1 ? '' : 's'} 
+                {isVIP ? ' (VIPs with 2 warnings are demoted to customer)' : ' (customers with 3 warnings are deregistered)'}
+              </p>
+              {userWarnings >= warningThreshold && (
+                <p className={`text-sm ${userWarnings >= warningThreshold ? 'text-red-600' : 'text-yellow-600'}`}>
+                  {isVIP
+                    ? 'You are at risk of being demoted to a regular customer. Please maintain your account in good standing.'
+                    : 'One more warning will result in your account being deregistered. Please ensure you have sufficient funds before placing orders.'}
+                </p>
+              )}
+              {userWarnings < warningThreshold && (
+                <p className="text-sm text-yellow-600">
+                  You received this warning for attempting to place an order without sufficient funds. {warningThreshold - userWarnings} more warning{warningThreshold - userWarnings === 1 ? '' : 's'} will result in {isVIP ? 'demotion to customer' : 'account deregistration'}.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* VIP Upgrade Banner (if just became eligible or recently upgraded) */}
       {vip_status.vip_eligible && !isVIP && (
@@ -136,7 +203,7 @@ const getBackendImage = (path: string | null) =>
               </h3>
               <p className="text-amber-700 mb-3">{vip_status.vip_reason}</p>
               <p className="text-sm text-amber-600">
-                Complete your next order to unlock VIP benefits: 5% discount on food + free delivery credits!
+                Complete your next order to unlock VIP benefits: 5% discount on orders + free delivery!
               </p>
             </div>
           </div>
@@ -159,6 +226,8 @@ const getBackendImage = (path: string | null) =>
           </div>
         </div>
       )}
+
+      {/* Free Delivery Tracker removed from banner — progress now shown in VIP Status card */}
 
       {/* Top Stats Grid */}
       <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -203,11 +272,36 @@ const getBackendImage = (path: string | null) =>
           {isVIP ? (
             <>
               <p className="text-2xl font-bold text-amber-600 mb-2">VIP Member</p>
-              <div className="space-y-1 text-sm text-gray-600">
-                <p>✅ {vip_status.discount_percent}% discount on food</p>
-                <p>🚚 {vip_status.free_delivery_credits} free delivery credits</p>
-                {vip_status.next_free_delivery_in > 0 && (
-                  <p>📦 {vip_status.next_free_delivery_in} orders until next free delivery</p>
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>✅ {vip_status.discount_percent}% discount on orders</p>
+
+                {/* Spark-bar progress for free delivery (compact) */}
+                {/* Show spark-bar only when no free delivery credits are available */}
+                {freeDeliveryCredits === 0 ? (
+                  <div className="mt-3">
+                    <p className="text-sm text-gray-700 mb-2">Progress to next free delivery</p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center space-x-1">
+                        {[1, 2, 3].map((slot) => (
+                          <div
+                            key={slot}
+                            aria-hidden
+                            className={`w-8 h-2 rounded-full transition-colors duration-200 ${
+                              slot <= freeDeliveryProgress ? 'bg-amber-500 shadow-[0_0_8px_rgba(250,204,21,0.25)]' : 'bg-gray-200'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <div className="ml-2 text-sm text-gray-700">
+                        <span>{freeDeliveryProgress}/3</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <p className="text-sm text-gray-700 mb-1">Free delivery credits available</p>
+                    <p className="text-sm font-semibold text-green-700">🎁 {freeDeliveryCredits} free delivery credit{freeDeliveryCredits === 1 ? '' : 's'}</p>
+                  </div>
                 )}
               </div>
             </>
@@ -244,7 +338,14 @@ const getBackendImage = (path: string | null) =>
         {/* Quick Stats Card */}
         <div className="bg-white rounded-xl shadow-md p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-700">Quick Stats</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-semibold text-gray-700">Quick Stats</h3>
+              {/* Warning badge: green when 0, yellow when some warnings, red when at/above threshold */}
+              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                userWarnings === 0 ? 'bg-green-100 text-green-700' :
+                (userWarnings >= warningThreshold ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700')
+              }`}>{userWarnings === 0 ? 'No warnings' : `${userWarnings} warning${userWarnings === 1 ? '' : 's'}`}</span>
+            </div>
             <span className="text-3xl">📊</span>
           </div>
           <div className="space-y-3">
@@ -295,7 +396,6 @@ const getBackendImage = (path: string | null) =>
               </p>
               <p className="text-primary-600 font-bold">
                 {dashboard.most_popular_dish.cost_formatted}
-                {isVIP && <span className="text-xs text-green-600 ml-1">(5% off for VIP!)</span>}
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <RatingStars rating={dashboard.most_popular_dish.average_rating} />
@@ -330,7 +430,6 @@ const getBackendImage = (path: string | null) =>
               </p>
               <p className="text-primary-600 font-bold">
                 {dashboard.highest_rated_dish.cost_formatted}
-                {isVIP && <span className="text-xs text-green-600 ml-1">(5% off for VIP!)</span>}
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <RatingStars rating={dashboard.highest_rated_dish.average_rating} />
@@ -534,6 +633,24 @@ const getBackendImage = (path: string | null) =>
           🤖 Support
         </Link>
       </div>
+
+      {/* Account Management Section */}
+      {user?.customer_tier === 'registered' && (
+        <div className="mt-8 bg-gray-50 border border-gray-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4">Account Management</h3>
+          <p className="text-gray-600 mb-4">Want to close your account?</p>
+          <button
+            onClick={handleDeregister}
+            disabled={deregisterInProgress}
+            className="btn-danger"
+          >
+            {deregisterInProgress ? 'Submitting...' : 'Request Account Closure'}
+          </button>
+          <p className="text-sm text-gray-500 mt-2">
+            Your deregistration request will be sent to the manager for approval.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

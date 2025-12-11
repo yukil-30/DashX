@@ -81,17 +81,26 @@ def check_vip_eligibility(db: Session, account: Account) -> VIPStatus:
     
     has_unresolved = unresolved_complaints > 0
     
-    # Get total spent from completed orders
-    total_spent = db.query(func.sum(Order.finalCost)).filter(
-        Order.accountID == account.ID,
-        Order.status == 'delivered'
-    ).scalar() or 0
+    # Get total spent. Prefer stored counter `account.total_spent_cents` which is
+    # updated at order creation so the dashboard reflects spend immediately after ordering.
+    # Fall back to summing delivered orders if the stored counter isn't available.
+    if getattr(account, 'total_spent_cents', None) is not None:
+        total_spent = account.total_spent_cents or 0
+    else:
+        total_spent = db.query(func.sum(Order.finalCost)).filter(
+            Order.accountID == account.ID,
+            Order.status == 'delivered'
+        ).scalar() or 0
     
-    # Get completed orders count
-    completed_orders = db.query(Order).filter(
-        Order.accountID == account.ID,
-        Order.status == 'delivered'
-    ).count()
+    # Get completed orders count. Prefer stored counter for immediacy (orders placed),
+    # fall back to delivered orders query if not present.
+    if getattr(account, 'completed_orders_count', None) is not None:
+        completed_orders = account.completed_orders_count
+    else:
+        completed_orders = db.query(Order).filter(
+            Order.accountID == account.ID,
+            Order.status == 'delivered'
+        ).count()
     
     # Check eligibility
     meets_spend_threshold = total_spent >= VIP_SPEND_THRESHOLD_CENTS

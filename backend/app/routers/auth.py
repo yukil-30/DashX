@@ -8,11 +8,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models import Account, Blacklist, Restaurant
+from app.models import Account, Blacklist, Restaurant, AuditLog, ManagerNotification
 from app.schemas import (
-    UserRegisterRequest, UserLoginRequest, TokenResponse,
+    UserRegisterRequest, UserLoginRequest, TokenResponse, RegistrationResponse,
     UserProfile, UserProfileResponse, TokenResponseWithWarnings, LoginWarningInfo,
     ManagerRegisterRequest
 )
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=RegistrationResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     request: UserRegisterRequest,
     db: Session = Depends(get_db)
@@ -47,40 +48,84 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered"
         )
+
+    # Reject registration if email is blacklisted and log the attempt for managers
+    blacklisted = db.query(Blacklist).filter(Blacklist.email == request.email).first()
+    if blacklisted:
+        # Create a manager notification so managers can see blocked attempts
+        now_iso = datetime.now(timezone.utc).isoformat()
+        notif = ManagerNotification(
+            notification_type="blacklist_registration_attempt",
+            title="Blocked Registration Attempt",
+            message=f"Registration attempt blocked for blacklisted email: {request.email}",
+            related_account_id=blacklisted.original_account_id,
+            related_order_id=None,
+            is_read=False,
+            created_at=now_iso
+        )
+        db.add(notif)
+
+        # Create an audit log entry for the blocked registration
+        audit = AuditLog(
+            action_type="blocked_registration_attempt",
+            actor_id=None,
+            target_id=blacklisted.original_account_id,
+            complaint_id=None,
+            order_id=None,
+            details={"email": request.email, "blacklist_id": blacklisted.id},
+            created_at=now_iso
+        )
+        db.add(audit)
+        db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This email has been blacklisted and cannot register",
+        )
     
     # Create new user with schema fields
     try:
+        # Always treat self-registrations as customer accounts that require manager approval
         new_user = Account(
             email=request.email,
             password=hash_password(request.password),
-            type=request.type,
+            type="customer",
             balance=0,
-            warnings=0
+            warnings=0,
+            customer_tier="pending"
         )
-        
+
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        
-        logger.info(f"New user registered: {new_user.email} as {new_user.type}")
-        
+
+        logger.info(f"New user registered (pending approval): {new_user.email}")
+
     except IntegrityError:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered"
         )
-    
-    # Generate access token
-    access_token = create_access_token(
-        data={"sub": new_user.email, "user_id": new_user.ID, "role": new_user.type}
-    )
-    
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
+
+    # Notify managers about a pending registration
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        create_notif = ManagerNotification(
+            notification_type="registration_pending",
+            title="New Registration Pending Approval",
+            message=f"New user {new_user.email} registered and awaits approval.",
+            related_account_id=new_user.ID,
+            is_read=False,
+            created_at=now_iso
+        )
+        db.add(create_notif)
+        db.commit()
+    except Exception:
+        # Don't fail registration if notification can't be created
+        db.rollback()
+
+    return RegistrationResponse(message="Registration created and is pending manager approval", pending=True)
 
 
 @router.post("/register-manager", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -190,6 +235,22 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"}
         )
     
+    # Check if customer registration is pending manager approval
+    if user.customer_tier == 'pending':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration pending manager approval. Please wait for approval to access your account.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Check if customer account has been deregistered/closed
+    if user.customer_tier == 'deregistered':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been closed",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
     # Verify password
     if not verify_password(request.password, user.password):
         raise HTTPException(
@@ -259,6 +320,11 @@ async def get_current_user_profile(
         wage=current_user.wage,
         restaurantID=current_user.restaurantID
     )
+    # include customer_tier if available
+    try:
+        profile.customer_tier = getattr(current_user, 'customer_tier', None)
+    except Exception:
+        pass
     
     return UserProfileResponse(user=profile)
 

@@ -51,6 +51,8 @@ export default function DishCard({ dish, onAddToCart }: DishCardProps) {
           </div>
         </div>
 
+        {/* No VIP info shown on dish cards per design */}
+
         {onAddToCart && (
           <button
             onClick={() => onAddToCart(dish)}

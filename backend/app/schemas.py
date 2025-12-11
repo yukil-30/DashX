@@ -65,6 +65,12 @@ class TokenResponse(BaseModel):
     expires_in: int = Field(..., description="Token expiry in seconds")
 
 
+class RegistrationResponse(BaseModel):
+    """Response for a registration request when approval is required"""
+    message: str
+    pending: bool = True
+
+
 class UserProfile(BaseModel):
     """User profile response (no sensitive data)"""
     ID: int
@@ -75,6 +81,7 @@ class UserProfile(BaseModel):
     wage: Optional[int] = None
     restaurantID: Optional[int] = None
     free_delivery_credits: int = 0
+    customer_tier: Optional[str] = Field('registered', description="Customer tier: pending, registered, vip, deregistered")
 
     class Config:
         from_attributes = True
@@ -1003,6 +1010,8 @@ class ProfileResponse(BaseModel):
     account_id: int
     email: str
     account_type: str
+    warnings: int = 0
+    customer_tier: Optional[str] = None
     display_name: Optional[str] = None
     bio: Optional[str] = None
     profile_picture: Optional[str] = None

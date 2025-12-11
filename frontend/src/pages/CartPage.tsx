@@ -135,7 +135,24 @@ export default function CartPage() {
         } else if (status === 402) {
           // Payment required - insufficient balance
           if (typeof detail === 'object' && detail.error === 'insufficient_deposit') {
-            errorMessage = `Insufficient balance. You need $${(detail.required_amount / 100).toFixed(2)} but only have $${(detail.current_balance / 100).toFixed(2)}. Please deposit $${(detail.shortfall / 100).toFixed(2)} more.`;
+            const warnings = detail.warnings || 0;
+            const userType = detail.user_type;
+            let warningMessage = '';
+            
+            if (warnings > 0) {
+              const warningThreshold = userType === 'vip' ? 2 : 3;
+              warningMessage = ` You now have ${warnings} warning${warnings === 1 ? '' : 's'}. `;
+              
+              if (warnings >= warningThreshold) {
+                if (userType === 'vip') {
+                  warningMessage += 'You have been demoted to a regular customer!';
+                } else if (userType === 'customer') {
+                  warningMessage += 'One more warning will deregister your account!';
+                }
+              }
+            }
+            
+            errorMessage = `Insufficient balance. You need $${(detail.required_amount / 100).toFixed(2)} but only have $${(detail.current_balance / 100).toFixed(2)}. Please deposit $${(detail.shortfall / 100).toFixed(2)} more.${warningMessage}`;
           } else {
             errorMessage = 'Insufficient balance to place order';
           }
@@ -194,7 +211,7 @@ export default function CartPage() {
 
   const deliveryFee = 500; // $5 in cents
   
-  // Calculate VIP discounts
+  // Calculate VIP discounts and free delivery
   const discountPercent = vipInfo?.is_vip ? (vipInfo.discount_percent || 5) : 0;
   const discountAmount = Math.floor(totalCost * discountPercent / 100);
   const freeDelivery = vipInfo?.is_vip && (vipInfo.free_deliveries_remaining || 0) > 0;
@@ -290,7 +307,7 @@ export default function CartPage() {
                   <span className="font-semibold text-amber-800">VIP Member</span>
                 </div>
                 <p className="text-sm text-amber-700 mt-1">
-                  {discountPercent}% discount applied • {freeDelivery ? '1 free delivery used' : `${vipInfo.free_deliveries_remaining} free deliveries available`}
+                  {discountPercent}% discount applied • {freeDelivery ? '1 free delivery will be used' : `${vipInfo.free_deliveries_remaining || 0} free deliveries available`}
                 </p>
               </div>
             )}

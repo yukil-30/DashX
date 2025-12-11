@@ -9,6 +9,7 @@ interface DashboardStats {
   orders_awaiting_assignment: number;
   flagged_kb_items: number;
   unread_notifications: number;
+  blocked_registration_attempts?: number;
   total_employees: number;
   chefs_count: number;
   delivery_count: number;
@@ -131,6 +132,14 @@ export function ManagerDashboard() {
               <span className="card-label">Unread Notifications</span>
             </div>
           </div>
+
+          <Link to="/manager/blacklist-attempts" className="action-card danger">
+            <div className="card-icon">🚫</div>
+            <div className="card-content">
+              <span className="card-number">{stats.blocked_registration_attempts ?? 0}</span>
+              <span className="card-label">Blocked Registrations (today)</span>
+            </div>
+          </Link>
         </div>
       </section>
 

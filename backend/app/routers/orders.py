@@ -146,6 +146,100 @@ async def list_orders(
     return result
 
 
+@router.get("/chef", response_model=List[OrderResponse])
+async def list_orders_for_chef(
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(20, ge=1, le=100, description="Max orders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(get_current_user)
+):
+    """
+    List orders that include dishes belonging to the current authenticated chef.
+    Chefs can see only orders which contain at least one dish they created.
+    """
+    # Only chefs may access this endpoint
+    if current_user.type != "chef":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only chefs can access this endpoint")
+
+    # Fetch all dish IDs owned by this chef
+    chef_dish_rows = db.query(Dish.id).filter(Dish.chefID == current_user.ID).all()
+    chef_dish_ids = [r[0] for r in chef_dish_rows]
+
+    if not chef_dish_ids:
+        return []
+
+    # Query orders that have ordered_dishes matching the chef's dish IDs
+    query = db.query(Order).join(OrderedDish, OrderedDish.orderID == Order.id).filter(
+        OrderedDish.DishID.in_(chef_dish_ids)
+    ).options(
+        joinedload(Order.ordered_dishes).joinedload(OrderedDish.dish)
+    ).distinct()
+
+    if status_filter:
+        query = query.filter(Order.status == status_filter)
+
+    orders = query.order_by(Order.id.desc()).offset(offset).limit(limit).all()
+
+    result = []
+    from app.models import AuditLog
+
+    for order in orders:
+        # Determine which of this order's dishes belong to the chef
+        chef_ordered_ids = [od.DishID for od in order.ordered_dishes if od.DishID in chef_dish_ids]
+
+        # Check audit logs to see which of those dishes have been marked prepared by this chef
+        prepared_ids_set = set()
+        if chef_ordered_ids:
+            logs = db.query(AuditLog).filter(
+                AuditLog.action_type == 'chef_mark_prepared',
+                AuditLog.actor_id == current_user.ID,
+                AuditLog.order_id == order.id
+            ).all()
+
+            for l in logs:
+                try:
+                    details = l.details or {}
+                    prepared = details.get('prepared_dish_ids') or details.get('prepared_dish_ids', [])
+                    for pid in prepared:
+                        prepared_ids_set.add(pid)
+                except Exception:
+                    # ignore malformed audit details
+                    continue
+
+        # If all of this chef's items in the order have been marked prepared, skip the order
+        if chef_ordered_ids and set(chef_ordered_ids).issubset(prepared_ids_set):
+            continue
+
+        ordered_dishes_response = [
+            OrderedDishResponse(
+                DishID=od.DishID,
+                quantity=od.quantity,
+                dish_name=od.dish.name if od.dish else None,
+                dish_cost=od.dish.cost if od.dish else None
+            )
+            for od in order.ordered_dishes
+        ]
+
+        result.append(OrderResponse(
+            id=order.id,
+            accountID=order.accountID,
+            dateTime=order.dateTime.isoformat() if hasattr(order.dateTime, 'isoformat') else order.dateTime,
+            finalCost=order.finalCost,
+            status=order.status,
+            bidID=order.bidID,
+            note=order.note,
+            delivery_address=order.delivery_address,
+            delivery_fee=order.delivery_fee,
+            subtotal_cents=order.subtotal_cents,
+            discount_cents=order.discount_cents,
+            free_delivery_used=order.free_delivery_used,
+            ordered_dishes=ordered_dishes_response
+        ))
+
+    return result
+
+
 @router.post("", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     order_request: OrderCreateRequest,
@@ -216,7 +310,7 @@ async def create_order(
     if is_vip:
         discount_cents = (subtotal_cents * VIP_DISCOUNT_PERCENT) // 100
     
-    # Determine delivery fee
+    # Determine delivery fee - VIPs can use free delivery credits
     delivery_fee = DELIVERY_FEE_CENTS
     free_delivery_used = 0
     if is_vip and current_user.free_delivery_credits > 0:
@@ -229,8 +323,21 @@ async def create_order(
     
     # Check if user has sufficient deposit
     if current_user.balance < final_cost:
-        # Insufficient funds - increment warning and reject
+        # Insufficient funds - increment warning and possibly demote/deregister
         current_user.warnings += 1
+        
+        # Apply warning thresholds and auto-actions
+        if current_user.type == "vip" and current_user.warnings >= 2:
+            # VIP with 2+ warnings gets demoted to customer (warnings cleared)
+            logger.info(f"VIP {current_user.email} demoted to customer due to 2 warnings")
+            current_user.type = "customer"
+            current_user.warnings = 0  # Clear warnings on demotion
+        elif current_user.type == "customer" and current_user.warnings >= 3:
+            # Customer with 3+ warnings gets deregistered (becomes visitor)
+            logger.info(f"Customer {current_user.email} deregistered due to 3 warnings")
+            current_user.type = "visitor"
+            current_user.warnings = 0  # Clear warnings on deregistration
+        
         db.commit()
         
         raise HTTPException(
@@ -238,6 +345,7 @@ async def create_order(
             detail={
                 "error": "insufficient_deposit",
                 "warnings": current_user.warnings,
+                "user_type": current_user.type,
                 "required_amount": final_cost,
                 "current_balance": current_user.balance,
                 "shortfall": final_cost - current_user.balance
@@ -287,16 +395,11 @@ async def create_order(
         if free_delivery_used:
             current_user.free_delivery_credits -= 1
         
-        # === FIX 1: Track total spending (includes discount and delivery) ===
-        # This counts toward VIP eligibility threshold
+        # Track total spending and orders for VIP eligibility
         current_user.total_spent_cents = (current_user.total_spent_cents or 0) + final_cost
-        
-        # === FIX 2: Increment completed orders count IMMEDIATELY ===
-        # Count 'paid' orders toward VIP metrics since payment was successful
         current_user.completed_orders_count = (current_user.completed_orders_count or 0) + 1
         
-        # === FIX 3: Check for VIP upgrade after order ===
-        # VIP Configuration (same as customer.py)
+        # VIP Configuration
         VIP_SPEND_THRESHOLD_CENTS = 10000  # $100
         VIP_ORDERS_THRESHOLD = 3  # Or 3 orders
         
@@ -308,6 +411,7 @@ async def create_order(
             
             if meets_spend_threshold or meets_orders_threshold:
                 # Upgrade to VIP!
+                from app.models import VIPHistory
                 vip_entry = VIPHistory(
                     account_id=current_user.ID,
                     previous_type=current_user.type,
@@ -320,11 +424,10 @@ async def create_order(
                 
                 current_user.previous_type = current_user.type
                 current_user.type = 'vip'
-                current_user.free_delivery_credits = 0  # Reset credits
                 
                 logger.info(f"Customer {current_user.email} upgraded to VIP! Spent: ${current_user.total_spent_cents/100:.2f}, Orders: {current_user.completed_orders_count}")
         
-        # === FIX 4: Grant free delivery credits for VIPs ===
+        # === Grant free delivery credits for VIPs ===
         # Every 3 orders, VIP gets 1 free delivery
         if current_user.type == 'vip':
             if current_user.completed_orders_count % VIP_FREE_DELIVERY_EVERY_N_ORDERS == 0:
@@ -713,6 +816,53 @@ async def assign_delivery(
         is_lowest_bid=is_lowest_bid,
         memo_saved=memo_saved
     )
+
+
+@router.post("/{order_id}/chef-mark-prepared")
+async def chef_mark_prepared(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: Account = Depends(get_current_user)
+):
+    """
+    Allow a chef to mark their portion of an order as prepared.
+    This does not change global order status (orders may involve multiple chefs).
+    Records an audit log entry and returns success.
+    """
+    # Only chefs can call this
+    if current_user.type != "chef":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only chefs can mark prepared items")
+
+    # Load order with items
+    order = db.query(Order).options(
+        joinedload(Order.ordered_dishes).joinedload(OrderedDish.dish)
+    ).filter(Order.id == order_id).first()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order {order_id} not found")
+
+    # Get chef's dish IDs
+    chef_dish_rows = db.query(Dish.id).filter(Dish.chefID == current_user.ID).all()
+    chef_dish_ids = [r[0] for r in chef_dish_rows]
+
+    # Check order contains at least one of the chef's dishes
+    prepared_dish_ids = [od.DishID for od in order.ordered_dishes if od.DishID in chef_dish_ids]
+    if not prepared_dish_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This order does not contain any of your dishes")
+
+    # Record an audit log (non-destructive)
+    from app.models import AuditLog
+    log = AuditLog(
+        action_type="chef_mark_prepared",
+        actor_id=current_user.ID,
+        order_id=order.id,
+        details={"prepared_dish_ids": prepared_dish_ids},
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
+    db.add(log)
+    db.commit()
+
+    return {"message": "Marked prepared"}
 
 
 @router.get("/history/me")

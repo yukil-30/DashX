@@ -22,7 +22,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 
 from app.database import get_db
 from app.models import (
@@ -220,6 +220,7 @@ class DashboardStatsResponse(BaseModel):
     orders_awaiting_assignment: int = 0
     flagged_kb_items: int = 0
     unread_notifications: int = 0
+    blocked_registration_attempts: int = 0
     # Employee stats
     total_employees: int = 0
     chefs_count: int = 0
@@ -250,6 +251,52 @@ class BiddingOrderResponse(BaseModel):
 class BiddingOrderListResponse(BaseModel):
     """List of orders awaiting bid assignment"""
     orders: List[BiddingOrderResponse]
+    total: int
+
+
+class AccountSummary(BaseModel):
+    id: int
+    email: str
+    type: str
+    warnings: int
+    is_blacklisted: bool
+    customer_tier: Optional[str] = None
+    balance: int
+    has_pending_deregister: bool = False
+
+
+class CloseAccountRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class CloseAccountResponse(BaseModel):
+    message: str
+    account_id: int
+    closed: bool
+
+
+class BlacklistCreateRequest(BaseModel):
+    email: EmailStr
+    reason: Optional[str] = None
+    original_account_id: Optional[int] = None
+
+
+class BlacklistCreateResponse(BaseModel):
+    message: str
+    blacklist_id: int
+    email: str
+
+
+class BlacklistAttemptItem(BaseModel):
+    id: int
+    title: str
+    message: str
+    related_account_id: Optional[int] = None
+    created_at: Optional[str] = None
+
+
+class BlacklistAttemptListResponse(BaseModel):
+    attempts: List[BlacklistAttemptItem]
     total: int
 
 
@@ -337,6 +384,15 @@ async def get_dashboard(
     unread_notifs = db.query(ManagerNotification).filter(
         ManagerNotification.is_read == False
     ).count()
+
+    # Blocked registration attempts today (manager-visible activity)
+    try:
+        blocked_count = db.query(ManagerNotification).filter(
+            ManagerNotification.notification_type == "blacklist_registration_attempt",
+            ManagerNotification.created_at >= today_start
+        ).count()
+    except Exception:
+        blocked_count = 0
     
     # Employee counts
     employees = db.query(Account).filter(
@@ -379,6 +435,7 @@ async def get_dashboard(
         orders_awaiting_assignment=orders_awaiting,
         flagged_kb_items=flagged_kb,
         unread_notifications=unread_notifs,
+        blocked_registration_attempts=blocked_count,
         total_employees=total_employees,
         chefs_count=chefs_count,
         delivery_count=delivery_count,
@@ -391,6 +448,352 @@ async def get_dashboard(
         total_customers=total_customers,
         total_vips=total_vips
     )
+
+
+# ============================================================
+# Account / Registration Management
+# ============================================================
+
+
+@router.get("/accounts", response_model=List[AccountSummary])
+async def list_accounts(
+    pending_only: bool = Query(False, description="Show only pending registrations"),
+    role: Optional[str] = Query(None, description="Filter by role/type"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    show_blacklisted: bool = Query(False, description="Include blacklisted accounts in results"),
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """List accounts needing manager action: pending registrations, deregister requests, blacklisted accounts, and accounts with warnings."""
+    # First, get all accounts with pending deregister requests
+    deregister_account_ids = db.query(ManagerNotification.related_account_id).filter(
+        ManagerNotification.notification_type == 'deregister_request'
+    ).all()
+    deregister_ids_set = set(row[0] for row in deregister_account_ids if row[0])
+    
+    query = db.query(Account)
+    if role:
+        query = query.filter(Account.type == role)
+
+    # Default: show accounts that need manager attention (pending, blacklisted, with deregister request, or with warnings)
+    if pending_only:
+        query = query.filter(Account.customer_tier == 'pending')
+    else:
+        deregister_ids_list = list(deregister_ids_set) if deregister_ids_set else []
+        conditions = [
+            Account.customer_tier == 'pending',
+            (Account.type == 'customer') & (Account.warnings > 0)
+        ]
+        # Only include blacklisted accounts if explicitly requested
+        if show_blacklisted:
+            conditions.insert(1, Account.is_blacklisted == True)
+
+        if deregister_ids_list:
+            conditions.append(Account.ID.in_(deregister_ids_list))
+
+        query = query.filter(or_(*conditions))
+
+    accounts = query.order_by(Account.ID.desc()).offset(offset).limit(limit).all()
+    
+    # Filter out accounts that are already deregistered (closed) and do not need manager action.
+    # Keep accounts that are blacklisted or have pending deregister requests so managers can still see them.
+    results = []
+    for a in accounts:
+        # Skip if account is deregistered and not blacklisted and has no pending deregister request
+        if getattr(a, 'customer_tier', None) == 'deregistered' and not a.is_blacklisted and a.ID not in deregister_ids_set:
+            continue
+        results.append(AccountSummary(
+            id=a.ID,
+            email=a.email,
+            type=a.type,
+            warnings=a.warnings,
+            is_blacklisted=bool(a.is_blacklisted),
+            customer_tier=getattr(a, 'customer_tier', None),
+            balance=getattr(a, 'balance', 0),
+            has_pending_deregister=a.ID in deregister_ids_set
+        ))
+
+    return results
+
+
+@router.post("/accounts/{account_id}/approve", response_model=dict)
+async def approve_registration(
+    account_id: int,
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Approve a pending customer registration."""
+    account = db.query(Account).filter(Account.ID == account_id).first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    
+    if account.customer_tier != 'pending':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account is not pending approval")
+    
+    account.customer_tier = 'registered'
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    create_audit_entry(
+        db,
+        action_type="registration_approved",
+        actor_id=current_user.ID,
+        target_id=account.ID,
+        details={},
+    )
+    
+    create_manager_notification(
+        db,
+        notification_type="registration_approved",
+        title="Registration Approved",
+        message=f"Registration for {account.email} has been approved",
+        related_account_id=account.ID,
+    )
+    
+    db.commit()
+    return {"message": "Registration approved", "account_id": account_id}
+
+
+@router.post("/accounts/{account_id}/reject", response_model=dict)
+async def reject_registration(
+    account_id: int,
+    reason: Optional[str] = None,
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Reject a pending customer registration and add to blacklist."""
+    account = db.query(Account).filter(Account.ID == account_id).first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    
+    if account.customer_tier != 'pending':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account is not pending approval")
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    blacklist_entry = Blacklist(
+        email=account.email,
+        reason=reason or "Registration rejected by manager",
+        original_account_id=account.ID,
+        blacklisted_by=current_user.ID,
+        created_at=now_iso
+    )
+    db.add(blacklist_entry)
+    
+    account.is_blacklisted = True
+    account.customer_tier = 'deregistered'
+    
+    create_audit_entry(
+        db,
+        action_type="registration_rejected",
+        actor_id=current_user.ID,
+        target_id=account.ID,
+        details={"reason": reason},
+    )
+    
+    create_manager_notification(
+        db,
+        notification_type="registration_rejected",
+        title="Registration Rejected",
+        message=f"Registration for {account.email} was rejected",
+        related_account_id=account.ID,
+    )
+    
+    db.commit()
+    return {"message": "Registration rejected and blacklisted", "account_id": account_id}
+
+
+@router.post("/accounts/{account_id}/close", response_model=CloseAccountResponse)
+async def close_account(
+    account_id: int,
+    request: CloseAccountRequest,
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Close / deregister an account. Marks customer_tier as 'deregistered'. Does NOT blacklist (closing ≠ blacklisting)."""
+    account = db.query(Account).filter(Account.ID == account_id).first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+
+    # Apply closure: record previous state, zero balance, mark as deregistered
+    # NOTE: Closing an account is NOT the same as blacklisting. Blacklisting is for violations/rejection.
+    previous = {
+        "type": account.type,
+        "customer_tier": getattr(account, 'customer_tier', None),
+        "is_blacklisted": account.is_blacklisted
+    }
+
+    account.balance = 0
+    account.customer_tier = 'deregistered'
+    # Do NOT set is_blacklisted to True on close - that's only for rejection/violations
+    account.type = 'visitor'
+
+    # Create audit and manager notification
+    now_iso = datetime.now(timezone.utc).isoformat()
+    audit = create_audit_entry(
+        db,
+        action_type="account_closed",
+        actor_id=current_user.ID,
+        target_id=account.ID,
+        details={"reason": request.reason, "previous": previous},
+    )
+
+    create_manager_notification(
+        db,
+        notification_type="account_closed",
+        title="Account Closed",
+        message=f"Account {account.email} closed by {current_user.email}. Reason: {request.reason or 'No reason provided'}",
+        related_account_id=account.ID,
+        related_order_id=None
+    )
+
+    db.commit()
+
+    return CloseAccountResponse(message="Account closed/deregistered", account_id=account.ID, closed=True)
+
+
+@router.post("/accounts/{account_id}/close-deregister", response_model=dict)
+async def close_deregister_request(
+    account_id: int,
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Close/approve a pending deregister request from a customer. Sets customer_tier='deregistered'."""
+    account = db.query(Account).filter(Account.ID == account_id).first()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    
+    # Check if account already deregistered
+    if account.customer_tier == 'deregistered':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account is already deregistered"
+        )
+    
+    # Remove any pending deregister notifications for this account
+    pending_notifs_q = db.query(ManagerNotification).filter(
+        ManagerNotification.notification_type == "deregister_request",
+        ManagerNotification.related_account_id == account_id
+    )
+    pending_count = pending_notifs_q.count()
+    if pending_count == 0:
+        logger.warning(f"No pending deregister notification for account {account_id}, but proceeding with closure")
+    else:
+        # Delete all pending deregister notifications for this account
+        pending_notifs_q.delete(synchronize_session=False)
+        logger.info(f"Deleted {pending_count} pending deregister notification(s) for account {account_id}")
+    
+    # Record original email for audit, then anonymize to allow re-registration
+    original_email = account.email
+
+    # Set account as deregistered
+    account.customer_tier = 'deregistered'
+    account.balance = 0
+    account.type = 'visitor'
+    # Do NOT blacklist - close is not blacklist
+
+    # Anonymize email so the same address can be reused by a new registration
+    try:
+        anon_email = f"deregistered+{account.ID}@example.invalid"
+    except Exception:
+        anon_email = f"deregistered+{int(datetime.now(timezone.utc).timestamp())}@example.invalid"
+    account.email = anon_email
+    # Clear password so this account cannot be used to login even if email reused
+    account.password = ""
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    # Create audit log (include original email for traceability)
+    audit = create_audit_entry(
+        db,
+        action_type="deregister_approved",
+        actor_id=current_user.ID,
+        target_id=account.ID,
+        details={"reason": "Customer deregister request approved", "original_email": original_email},
+    )
+    
+    # Create manager notification about the closure
+    create_manager_notification(
+        db,
+        notification_type="deregister_approved",
+        title="Deregister Request Approved",
+        message=f"Account {account.email} has been deregistered and closed",
+        related_account_id=account.ID,
+    )
+    
+    db.commit()
+    logger.info(f"Account {account_id} deregistered by manager {current_user.ID}")
+    
+    return {"message": "Account deregistered and closed successfully", "account_id": account_id}
+
+
+@router.post("/blacklist", response_model=BlacklistCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_blacklist_entry(
+    request: BlacklistCreateRequest,
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """Manually add an email to the global blacklist."""
+    existing = db.query(Blacklist).filter(Blacklist.email == request.email).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already blacklisted")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    entry = Blacklist(
+        email=request.email,
+        reason=request.reason,
+        original_account_id=request.original_account_id,
+        blacklisted_by=current_user.ID,
+        created_at=now_iso
+    )
+    db.add(entry)
+
+    # Audit and notification
+    create_audit_entry(
+        db,
+        action_type="blacklist_added",
+        actor_id=current_user.ID,
+        target_id=request.original_account_id,
+        details={"email": request.email, "reason": request.reason},
+    )
+
+    create_manager_notification(
+        db,
+        notification_type="blacklist_added",
+        title="Blacklist Entry Added",
+        message=f"{request.email} was added to blacklist by {current_user.email}",
+        related_account_id=request.original_account_id,
+        related_order_id=None
+    )
+
+    db.commit()
+    db.refresh(entry)
+
+    return BlacklistCreateResponse(message="Email blacklisted", blacklist_id=entry.id, email=entry.email)
+
+
+@router.get("/blacklist-attempts", response_model=BlacklistAttemptListResponse)
+async def get_blacklist_attempts(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """List manager notifications representing blocked registration attempts."""
+    q = db.query(ManagerNotification).filter(ManagerNotification.notification_type == "blacklist_registration_attempt")
+    total = q.count()
+    items = q.order_by(ManagerNotification.created_at.desc()).offset(offset).limit(limit).all()
+
+    attempts = []
+    for it in items:
+        attempts.append(BlacklistAttemptItem(
+            id=it.id,
+            title=it.title,
+            message=it.message,
+            related_account_id=it.related_account_id,
+            created_at=it.created_at
+        ))
+
+    return BlacklistAttemptListResponse(attempts=attempts, total=total)
 
 
 # ============================================================

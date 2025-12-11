@@ -4,10 +4,12 @@ import apiClient from '../../lib/api-client';
 import { Dish } from '../../types/api';
 import { DishGrid } from '../../components';
 import { useAuth } from '../../contexts/AuthContext';
+// local helper for building image URLs
 
 export default function ChefDashboard() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
+  
 
 const { user } = useAuth();
 
@@ -27,15 +29,15 @@ useEffect(() => {
       setLoading(false);
     }
   };
-  // Helper to build full image URLs
-  const getImageUrl = (path?: string) => {
+  // Helper to build full image URLs (local version)
+  const getImageUrl = (path?: string | null) => {
     if (!path) return '';
     const backendUrl = 'http://localhost:8000';
     return `${backendUrl}/${encodeURI(path.replace(/^\/+/, ''))}`;
   };
 
   // Map dishes with full image URLs **just before passing to DishGrid**
-  const dishesWithFullUrl = dishes.map(d => ({
+  const dishesWithFullUrl = dishes.map((d: Dish) => ({
     ...d,
     picture: getImageUrl(d.picture),
   }));
@@ -56,6 +58,8 @@ useEffect(() => {
           </Link>
         </div>
       </div>
+
+      {/* Quick link to chef orders (use the nav to access full Active Orders page) */}
 
       <DishGrid
         dishes={dishesWithFullUrl}

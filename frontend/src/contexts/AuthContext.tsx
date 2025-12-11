@@ -148,8 +148,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = async () => {
     try {
-      const response = await apiClient.get<ProfileResponse>('/auth/me');
-      setUser(response.data.user);
+      const response = await apiClient.get<any>('/profiles/me');
+      const profile = response.data;
+      
+      // Construct user object from profile response
+      setUser({
+        ID: profile.account_id,
+        email: profile.email,
+        type: profile.account_type,
+        warnings: profile.warnings,
+        balance: profile.balance ?? 0,
+        wage: profile.wage ?? null,
+        restaurantID: profile.restaurantID ?? null,
+        customer_tier: profile.customer_tier ?? profile.customerTier ?? null,
+      });
+      
+      // Update warning info based on warnings count
+      const warningsCritical = profile.account_type === 'vip' ? profile.warnings >= 2 : profile.warnings >= 3;
+      setWarningInfo({
+        warnings_count: profile.warnings,
+        warning_message: profile.warnings > 0 ? `You have ${profile.warnings} warning(s)` : null,
+        is_near_threshold: warningsCritical,
+      });
     } catch (error) {
       console.error('Failed to fetch profile:', error);
       // If profile fetch fails, clear auth
@@ -193,9 +213,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (data: RegisterRequest) => {
+    // Create registration (manager approval required). Do not auto-login.
     await apiClient.post('/auth/register', data);
-    // After registration, automatically log in
-    await login({ email: data.email, password: data.password });
+    return;
   };
 
   const logout = () => {

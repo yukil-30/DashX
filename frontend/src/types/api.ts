@@ -34,6 +34,7 @@ export interface User {
   warnings: number;
   wage: number | null;
   restaurantID: number | null;
+  customer_tier?: string | null;
 }
 
 export interface LoginRequest {
@@ -44,7 +45,6 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  type: 'customer' | 'visitor';
 }
 
 export interface LoginResponse {

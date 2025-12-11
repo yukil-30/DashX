@@ -17,6 +17,7 @@ import ImageSearchPage from './pages/ImageSearchPage'
 import ChefDashboard from './pages/chef/ChefDashboard'
 import ChefComplaintsPage from './pages/chef/ChefComplaintsPage'
 import CreateDish from './pages/chef/CreateDish';
+import ChefOrders from './pages/chef/ChefOrders';
 import ModifyDish from "./pages/chef/ModifyDish";
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard'
 import DeliveryHistoryPage from './pages/delivery/DeliveryHistoryPage'
@@ -30,6 +31,7 @@ import { ManagerDisputes } from './pages/manager/ManagerDisputes'
 import { ManagerBidding } from './pages/manager/ManagerBidding'
 import { ManagerKB } from './pages/manager/ManagerKB'
 import { ManagerCustomerReviews } from './pages/manager/ManagerCustomerReviews'
+import { ManagerRegistration } from './pages/manager/ManagerRegistration'
 
 // Customer Feature Pages
 import CustomerDashboard from './pages/customer/CustomerDashboard'
@@ -45,8 +47,8 @@ function Navigation() {
   const { user, logout, warningInfo, dismissWarning } = useAuth();
   const { totalItems } = useCart();
 
-  // ✅ Helper to check if user is customer or VIP
-  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+  // ✅ Helper to check if user is customer or VIP with approved status
+  const isCustomerOrVip = (user?.type === 'customer' || user?.type === 'vip') && (user?.customer_tier === 'registered' || user?.type === 'vip');
 
   return (
     <nav className="bg-white shadow-md sticky top-0 z-40 animate-slide-down">
@@ -87,14 +89,20 @@ function Navigation() {
                   <Link to="/manager/bidding" className="block px-4 py-2 hover:bg-gray-100">🎯 Bidding</Link>
                   <Link to="/manager/kb" className="block px-4 py-2 hover:bg-gray-100">📚 KB Moderation</Link>
                   <Link to="/manager/complaints" className="block px-4 py-2 hover:bg-gray-100">📝 Complaints</Link>
+                  <Link to="/manager/registrations" className="block px-4 py-2 hover:bg-gray-100">🔐 Registrations</Link>
                 </div>
               </div>
             )}
 
             {user?.type === 'chef' && (
-              <Link to="/chef/dashboard" className="text-gray-700 hover:text-primary-600 font-medium">
-                My Dishes
-              </Link>
+              <>
+                <Link to="/chef/dashboard" className="text-gray-700 hover:text-primary-600 font-medium">
+                  My Dishes
+                </Link>
+                <Link to="/chef/orders" className="text-gray-700 hover:text-primary-600 font-medium">
+                  Active Orders
+                </Link>
+              </>
             )}
 
             {user?.type === 'delivery' && (
@@ -200,8 +208,8 @@ function AppRoutes() {
     );
   }
 
-  // ✅ Helper to check if user is customer or VIP
-  const isCustomerOrVip = user?.type === 'customer' || user?.type === 'vip';
+  // ✅ Helper to check if user is customer or VIP and approved by manager
+  const isCustomerOrVip = (user?.type === 'customer' || user?.type === 'vip') && (user?.customer_tier === 'registered' || user?.type === 'vip');
 
   return (
     <Routes>
@@ -326,6 +334,16 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/manager/registrations"
+        element={
+          user?.type === 'manager' ? (
+            <ManagerRegistration />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
         path="/manager/customer-reviews"
         element={
           user?.type === 'manager' ? (
@@ -341,10 +359,14 @@ function AppRoutes() {
         path="/chef/dashboard"
         element={user?.type === 'chef' ? <ChefDashboard /> : <Navigate to="/" replace />}
       />
-	<Route
-	 	path="/chef/dishes/new"
-  		element={user?.type === 'chef' ? <CreateDish /> : <Navigate to="/" replace />}
-	/>
+  <Route
+   	path="/chef/dishes/new"
+      element={user?.type === 'chef' ? <CreateDish /> : <Navigate to="/" replace />}
+  />
+  <Route
+    path="/chef/orders"
+    element={user?.type === 'chef' ? <ChefOrders /> : <Navigate to="/" replace />}
+  />
 	<Route
 	 	path="/chef/dishes/:dishId/edit"
   		element={user?.type === 'chef' ? <ModifyDish /> : <Navigate to="/" replace />}

@@ -9,7 +9,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [type, setType] = useState<'customer' | 'visitor'>('customer');
+  // Self-registrations are always for customers; manager approval required
+  const [type] = useState<'customer' | 'visitor'>('customer');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -41,9 +42,9 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await register({ email, password, type });
-      toast.success('Account created successfully! Welcome to DashX!');
-      navigate('/');
+      await register({ email, password });
+      toast.success('Account created — pending manager approval.');
+      navigate('/auth/login');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
@@ -133,22 +134,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">
-                Account Type
-              </label>
-              <select
-                id="type"
-                name="type"
-                value={type}
-                onChange={(e) => setType(e.target.value as 'customer' | 'visitor')}
-                className="input-field"
-              >
-                <option value="customer">Customer</option>
-                <option value="visitor">Visitor</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Customers can order food. Visitors can only browse.
-              </p>
+              <p className="text-sm text-gray-600">By creating an account you will be registered as a customer and your account will be pending manager approval. You won't be able to use customer features until approved.</p>
             </div>
           </div>
 

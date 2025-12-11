@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Account, Transaction
+from app.models import Account, Transaction, ManagerNotification, AuditLog
 from app.schemas import (
     DepositRequest, DepositResponse, BalanceResponse,
     TransactionResponse, TransactionListResponse
@@ -205,3 +205,62 @@ async def get_transactions(
         ],
         total=total
     )
+
+
+@router.post("/deregister", response_model=dict)
+async def deregister_account(
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Request account deregistration/closure.
+    
+    Only customers or VIPs can deregister. Notifies manager for approval.
+    Note: Deregistration is different from blacklisting. Blacklisting is for rejecting
+    registration or blocking due to violations. Deregistration is customer-initiated closure.
+    
+    Returns message indicating deregistration request created.
+    """
+    # Only customers and VIPs can deregister
+    if current_user.type not in ['customer', 'vip']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only customers can deregister their account"
+        )
+    
+    # Cannot deregister if already deregistered/blacklisted
+    if current_user.customer_tier == 'deregistered' or current_user.is_blacklisted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account is already closed or blacklisted"
+        )
+    
+    # Create manager notification for deregistration request
+    now_iso = datetime.now(timezone.utc).isoformat()
+    notif = ManagerNotification(
+        notification_type="deregister_request",
+        title="Account Deregistration Request",
+        message=f"Customer {current_user.email} ({current_user.type}) has requested account closure",
+        related_account_id=current_user.ID,
+        is_read=False,
+        created_at=now_iso
+    )
+    db.add(notif)
+    
+    # Create audit log
+    audit = AuditLog(
+        action_type="deregister_request",
+        actor_id=current_user.ID,
+        target_id=current_user.ID,
+        details={"reason": "Customer requested account deregistration"},
+        created_at=now_iso
+    )
+    db.add(audit)
+    
+    db.commit()
+    
+    return {
+        "message": "Deregistration request submitted. Manager will review and close your account.",
+        "status": "pending_manager_approval"
+    }
+
