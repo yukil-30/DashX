@@ -35,9 +35,14 @@ useEffect(() => {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Chef Dashboard</h1>
           <p className="text-gray-600">Manage your menu items</p>
         </div>
-        <Link to="/chef/dishes/new" className="btn-primary">
-          + Add New Dish
-        </Link>
+        <div className="flex gap-3">
+          <Link to="/chef/complaints" className="btn-secondary">
+            View Complaints
+          </Link>
+          <Link to="/chef/dishes/new" className="btn-primary">
+            + Add New Dish
+          </Link>
+        </div>
       </div>
 
       <DishGrid dishes={dishes} loading={loading} emptyMessage="No dishes yet. Create your first dish!" />

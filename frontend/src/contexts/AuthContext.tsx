@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import toast from 'react-hot-toast';
 import apiClient from '../lib/api-client';
-import { User, LoginRequest, RegisterRequest, LoginResponse, ProfileResponse } from '../types/api';
+import { User, LoginRequest, RegisterRequest, LoginResponse, ProfileResponse, ComplaintListResponse } from '../types/api';
 
 interface WarningInfo {
   warnings_count: number;
@@ -8,15 +9,26 @@ interface WarningInfo {
   is_near_threshold: boolean;
 }
 
+interface ComplaintInfo {
+  pendingComplaintsAgainstMe: number;
+  pendingComplimentsAgainstMe: number;
+  pendingComplaintsFiled: number;
+  pendingComplimentsFiled: number;
+  totalAgainstMe: number;
+  totalFiled: number;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   warningInfo: WarningInfo | null;
+  complaintInfo: ComplaintInfo | null;
   loading: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
+  refreshComplaintInfo: () => Promise<ComplaintInfo | null>;
   dismissWarning: () => void;
 }
 
@@ -26,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [warningInfo, setWarningInfo] = useState<WarningInfo | null>(null);
+  const [complaintInfo, setComplaintInfo] = useState<ComplaintInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Load user profile on mount if token exists
@@ -36,6 +49,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, [token]);
+
+  const refreshComplaintInfo = async () => {
+    try {
+      const [againstResponse, filedResponse] = await Promise.all([
+        apiClient.get<ComplaintListResponse>('/complaints/my/against'),
+        apiClient.get<ComplaintListResponse>('/complaints/my/filed'),
+      ]);
+
+      // Count pending complaints vs compliments separately
+      const pendingAgainst = againstResponse.data.complaints.filter(c => c.status === 'pending');
+      const pendingFiled = filedResponse.data.complaints.filter(c => c.status === 'pending');
+
+      const info: ComplaintInfo = {
+        pendingComplaintsAgainstMe: pendingAgainst.filter(c => c.type === 'complaint').length,
+        pendingComplimentsAgainstMe: pendingAgainst.filter(c => c.type === 'compliment').length,
+        pendingComplaintsFiled: pendingFiled.filter(c => c.type === 'complaint').length,
+        pendingComplimentsFiled: pendingFiled.filter(c => c.type === 'compliment').length,
+        totalAgainstMe: againstResponse.data.total,
+        totalFiled: filedResponse.data.total,
+      };
+
+      setComplaintInfo(info);
+      return info;
+    } catch (error) {
+      console.error('Failed to fetch complaint info:', error);
+      return null;
+    }
+  };
+
+  const showComplaintNotifications = (info: ComplaintInfo) => {
+    interface NotificationItem {
+      message: string;
+      type: 'complaint' | 'compliment';
+    }
+    const notifications: NotificationItem[] = [];
+
+    // Complaints against the user (negative - warning style)
+    if (info.pendingComplaintsAgainstMe > 0) {
+      const plural = info.pendingComplaintsAgainstMe === 1 ? 'complaint' : 'complaints';
+      notifications.push({
+        message: `You have ${info.pendingComplaintsAgainstMe} pending ${plural} against you`,
+        type: 'complaint',
+      });
+    }
+
+    // Compliments for the user (positive - success style)
+    if (info.pendingComplimentsAgainstMe > 0) {
+      const plural = info.pendingComplimentsAgainstMe === 1 ? 'compliment' : 'compliments';
+      notifications.push({
+        message: `You have ${info.pendingComplimentsAgainstMe} pending ${plural} for you! 🎉`,
+        type: 'compliment',
+      });
+    }
+
+    // Filed complaints awaiting resolution
+    if (info.pendingComplaintsFiled > 0) {
+      const plural = info.pendingComplaintsFiled === 1 ? 'complaint' : 'complaints';
+      notifications.push({
+        message: `You have ${info.pendingComplaintsFiled} filed ${plural} awaiting resolution`,
+        type: 'complaint',
+      });
+    }
+
+    // Filed compliments awaiting resolution
+    if (info.pendingComplimentsFiled > 0) {
+      const plural = info.pendingComplimentsFiled === 1 ? 'compliment' : 'compliments';
+      notifications.push({
+        message: `You have ${info.pendingComplimentsFiled} filed ${plural} awaiting resolution`,
+        type: 'compliment',
+      });
+    }
+
+    if (notifications.length > 0) {
+      // Show each notification with a slight delay for better UX
+      notifications.forEach((notification, index) => {
+        setTimeout(() => {
+          const isCompliment = notification.type === 'compliment';
+          toast(notification.message, {
+            icon: isCompliment ? '🌟' : '⚠️',
+            duration: 6000,
+            style: isCompliment
+              ? {
+                  background: '#D1FAE5',
+                  color: '#065F46',
+                  border: '1px solid #10B981',
+                }
+              : {
+                  background: '#FEF3C7',
+                  color: '#92400E',
+                  border: '1px solid #F59E0B',
+                },
+          });
+        }, index * 500);
+      });
+    }
+  };
 
   const refreshProfile = async () => {
     try {
@@ -68,6 +177,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { Authorization: `Bearer ${access_token}` },
     });
     setUser(profileResponse.data.user);
+
+    // Fetch and display complaint notifications after login
+    try {
+      const complaintInfoResult = await refreshComplaintInfo();
+      if (complaintInfoResult) {
+        // Show notifications with a slight delay so they appear after the "Welcome back" toast
+        setTimeout(() => {
+          showComplaintNotifications(complaintInfoResult);
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Failed to fetch complaint info on login:', error);
+    }
   };
 
   const register = async (data: RegisterRequest) => {
@@ -80,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     setWarningInfo(null);
+    setComplaintInfo(null);
     localStorage.removeItem('token');
   };
 
@@ -93,11 +216,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         warningInfo,
+        complaintInfo,
         loading,
         login,
         register,
         logout,
         refreshProfile,
+        refreshComplaintInfo,
         dismissWarning,
       }}
     >
