@@ -9,6 +9,7 @@ export default function RegisterManagerPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
+  const [restaurantAddress, setRestaurantAddress] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -49,6 +50,7 @@ export default function RegisterManagerPage() {
         email,
         password,
         restaurant_name: restaurantName.trim(),
+	restaurant_address: restaurantAddress.trim(),
       });
 
       // Auto-login with the returned token
@@ -111,6 +113,21 @@ export default function RegisterManagerPage() {
                 placeholder="Your Restaurant Name"
               />
             </div>
+		<div>
+ 	 	<label htmlFor="restaurantAddress" className="block text-sm font-medium text-gray-700 mb-1">
+   		 Restaurant Address
+  		</label>
+ 		 <input
+   		 id="restaurantAddress"
+    		name="restaurantAddress"
+    		type="text"
+    		required
+    		value={restaurantAddress}
+    		onChange={(e) => setRestaurantAddress(e.target.value)}
+    		className="input-field"
+    		placeholder="123 Main St, New York, NY"
+  		/>
+		</div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">

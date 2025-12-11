@@ -44,6 +44,7 @@ class ManagerRegisterRequest(BaseModel):
     email: EmailStr = Field(..., description="Email address")
     password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 chars)")
     restaurant_name: str = Field(..., min_length=1, max_length=255, description="Name of the new restaurant")
+    restaurant_address: str = Field(..., min_length=1, max_length=500, description="Physical address of the new restaurant")
     
     @field_validator("password")
     @classmethod

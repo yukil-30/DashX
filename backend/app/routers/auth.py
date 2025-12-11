@@ -150,7 +150,8 @@ async def register_manager(
     try:
         # Create restaurant first
         new_restaurant = Restaurant(
-            name=request.restaurant_name.strip()
+            name=request.restaurant_name.strip(),
+	    address=request.restaurant_address.strip()
         )
         db.add(new_restaurant)
         db.flush()  # Get the restaurant ID without committing
