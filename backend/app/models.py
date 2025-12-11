@@ -50,6 +50,21 @@ class Account(Base):
     is_fired = Column(Boolean, nullable=False, default=False)
     is_blacklisted = Column(Boolean, nullable=False, default=False)
     previous_type = Column(String(50), nullable=True)  # For VIP->customer demotion tracking
+    
+    # ========== Reputation System Fields ==========
+    # Employee (Chef/Delivery) reputation tracking
+    rolling_avg_rating = Column(Numeric(3, 2), nullable=True, default=0.00)  # Rolling average rating 0.00-5.00
+    total_rating_count = Column(Integer, nullable=False, default=0)  # Total ratings received
+    complaint_count = Column(Integer, nullable=False, default=0)  # Active complaints (decremented by compliments)
+    compliment_count = Column(Integer, nullable=False, default=0)  # Total compliments received
+    demotion_count = Column(Integer, nullable=False, default=0)  # Synonym for times_demoted for clarity
+    employment_status = Column(String(50), nullable=False, default='active')  # active, demoted, fired
+    bonus_count = Column(Integer, nullable=False, default=0)  # Number of bonuses received
+    last_bonus_at = Column(Text, nullable=True)  # ISO timestamp of last bonus
+    
+    # Customer tier tracking
+    customer_tier = Column(String(50), nullable=False, default='registered')  # registered, vip, deregistered
+    dispute_status = Column(String(50), nullable=True)  # pending, resolved - if customer has active dispute
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="accounts")

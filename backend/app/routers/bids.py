@@ -53,6 +53,13 @@ async def create_bid_standalone(
             detail="Only delivery personnel can submit bids"
         )
     
+    # Check if delivery person is fired or not eligible
+    if current_user.is_fired or current_user.employment_status == "fired":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been terminated. You cannot place bids."
+        )
+    
     # Validate order_id is provided
     if bid_request.order_id is None:
         raise HTTPException(

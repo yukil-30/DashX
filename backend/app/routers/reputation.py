@@ -21,15 +21,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Account, Complaint, AuditLog, Blacklist, ManagerNotification, Dish, Order, OrderedDish, Bid
+from app.models import Account, Complaint, AuditLog, Blacklist, ManagerNotification, Dish, Order, OrderedDish, Bid, DeliveryRating
 from app.schemas import (
     ComplaintCreateRequest, ComplaintResponse, ComplaintListResponse,
     ComplaintResolveRequest, ComplaintResolveResponse,
     AuditLogResponse, AuditLogListResponse,
     ManagerNotificationResponse, ManagerNotificationListResponse,
-    DisputeRequest, DisputeResponse
+    DisputeRequest, DisputeResponse,
+    EmployeeReputationSummary, CustomerWarningSummary, ReputationDashboardStats,
+    EmployeeListWithReputationResponse, CustomerListWithWarningsResponse,
+    DisputeDetailResponse, DisputeResolveRequest as NewDisputeResolveRequest, DisputeResolveResponse as NewDisputeResolveResponse
 )
 from app.auth import get_current_user, require_manager
+from app import reputation_engine as rep_engine
 
 logger = logging.getLogger(__name__)
 
@@ -808,6 +812,7 @@ async def resolve_complaint(
     - dismissed: Complaint without merit -> complainant gets a warning
     - warning_issued: Valid complaint -> target gets a warning
     
+    Uses the reputation engine for rule evaluation and automatic actions.
     Produces an immutable audit entry.
     """
     complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
@@ -823,58 +828,71 @@ async def resolve_complaint(
             detail="Complaint already resolved"
         )
     
-    # Update complaint
-    complaint.status = "resolved"
-    complaint.resolution = request.resolution
-    complaint.resolved_by = current_user.ID
-    complaint.resolved_at = get_iso_now()
+    # Handle compliment resolution separately
+    if complaint.type == "compliment":
+        result = rep_engine.process_compliment_resolution(db, complaint, current_user.ID)
+        db.commit()
+        
+        # Create audit entry
+        audit_entry = rep_engine.create_audit_entry(
+            db,
+            action_type="compliment_resolved",
+            actor_id=current_user.ID,
+            complaint_id=complaint.id,
+            details={"actions": result.get("actions", [])}
+        )
+        db.commit()
+        
+        return ComplaintResolveResponse(
+            message="Compliment resolved and benefits applied",
+            complaint_id=complaint.id,
+            resolution="compliment_applied",
+            warning_applied_to=None,
+            warning_count=None,
+            account_status_changed=None,
+            audit_log_id=audit_entry.id
+        )
     
-    warning_applied_to = None
+    # Use reputation engine for dispute resolution
+    result = rep_engine.resolve_dispute(
+        db, complaint, request.resolution, current_user.ID, request.notes
+    )
+    
+    # Extract results
+    warning_applied_to = result.get("warning_applied_to")
     warning_count = None
     account_status_changed = None
     
-    if request.resolution == "dismissed":
-        # Complaint without merit -> add warning to complainant
-        filer = db.query(Account).filter(Account.ID == complaint.filer).first()
-        if filer:
-            filer.warnings += 1
-            warning_applied_to = filer.ID
-            warning_count = filer.warnings
-            
-            # Check if filer should be blacklisted/demoted
-            account_status_changed = check_and_apply_customer_warning_rules(db, filer, current_user.ID)
+    # Check what happened
+    for action in result.get("actions", []):
+        if "rule_results" in action:
+            rule_results = action["rule_results"]
+            if rule_results.get("demoted"):
+                account_status_changed = "employee_demoted"
+            elif rule_results.get("fired"):
+                account_status_changed = "employee_fired"
+            elif rule_results.get("bonus_awarded"):
+                account_status_changed = "bonus_awarded"
+            elif rule_results.get("vip_demoted"):
+                account_status_changed = "vip_demoted"
+            elif rule_results.get("deregistered"):
+                account_status_changed = "deregistered"
+        
+        if "new_warnings" in action:
+            warning_count = action["new_warnings"]
     
-    elif request.resolution == "warning_issued":
-        # Valid complaint -> add warning to target (if applicable)
-        if complaint.accountID:
-            target = db.query(Account).filter(Account.ID == complaint.accountID).first()
-            if target:
-                target.warnings += 1
-                warning_applied_to = target.ID
-                warning_count = target.warnings
-                
-                # Check customer rules
-                if target.type in ["customer", "vip"]:
-                    account_status_changed = check_and_apply_customer_warning_rules(db, target, current_user.ID)
-                
-                # Check chef rules
-                if target.type == "chef":
-                    chef_status = check_and_apply_chef_rules(db, target, current_user.ID)
-                    if chef_status:
-                        account_status_changed = chef_status
-    
-    # First check for compliment cancellation (for the target)
-    if complaint.accountID and complaint.type == "complaint":
-        target = db.query(Account).filter(Account.ID == complaint.accountID).first()
+    # Get warning count if we have a target
+    if warning_applied_to and warning_count is None:
+        target = db.query(Account).filter(Account.ID == warning_applied_to).first()
         if target:
-            canceled = check_compliment_cancellation(db, target, current_user.ID)
-            if canceled > 0:
-                logger.info(f"{canceled} complaints canceled by compliments for user {target.email}")
+            warning_count = target.warnings
     
-    # Create audit entry
-    audit_entry = create_audit_entry(
+    db.commit()
+    
+    # Create final audit entry
+    audit_entry = rep_engine.create_audit_entry(
         db,
-        action_type="complaint_resolved",
+        action_type="complaint_resolved_with_engine",
         actor_id=current_user.ID,
         target_id=warning_applied_to,
         complaint_id=complaint.id,
@@ -884,10 +902,10 @@ async def resolve_complaint(
             "notes": request.notes,
             "warning_applied_to": warning_applied_to,
             "warning_count": warning_count,
-            "account_status_changed": account_status_changed
+            "account_status_changed": account_status_changed,
+            "actions_taken": len(result.get("actions", []))
         }
     )
-    
     db.commit()
     
     logger.info(f"Complaint {complaint_id} resolved as {request.resolution} by {current_user.email}")
@@ -1088,45 +1106,448 @@ async def evaluate_chef_performance(
     """
     Manually trigger chef performance evaluation.
     Checks all chefs for complaint threshold and rating threshold.
+    Uses the reputation engine.
     """
-    chefs = db.query(Account).filter(
-        Account.type == "chef",
-        Account.is_fired == False
-    ).all()
+    results = rep_engine.run_all_employee_evaluations(db, current_user.ID)
     
-    evaluations = []
-    
-    for chef in chefs:
-        # Count resolved complaints with warning
-        complaint_count = db.query(Complaint).filter(
-            Complaint.accountID == chef.ID,
-            Complaint.type == "complaint",
-            Complaint.status == "resolved",
-            Complaint.resolution == "warning_issued"
-        ).count()
-        
-        # Calculate average dish rating
-        avg_rating_result = db.query(func.avg(Dish.average_rating)).filter(
-            Dish.chefID == chef.ID,
-            Dish.reviews > 0
-        ).scalar()
-        
-        avg_rating = float(avg_rating_result) if avg_rating_result else None
-        
-        status_change = check_and_apply_chef_rules(db, chef, current_user.ID)
-        
-        evaluations.append({
-            "chef_id": chef.ID,
-            "email": chef.email,
-            "complaint_count": complaint_count,
-            "avg_rating": avg_rating,
-            "times_demoted": chef.times_demoted,
-            "status_change": status_change
-        })
+    # Filter to just chefs
+    chef_results = [r for r in results if r.get("type") == "chef"]
     
     db.commit()
     
     return {
-        "message": f"Evaluated {len(chefs)} chefs",
-        "evaluations": evaluations
+        "message": f"Evaluated {len(chef_results)} chefs",
+        "evaluations": chef_results
+    }
+
+
+# ============================================================
+# Reputation Dashboard Endpoints
+# ============================================================
+
+@router.get("/reputation/dashboard", response_model=ReputationDashboardStats)
+async def get_reputation_dashboard(
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """
+    Get comprehensive reputation dashboard statistics.
+    Shows employee and customer status overview.
+    """
+    # Employee counts
+    employees = db.query(Account).filter(Account.type.in_(["chef", "delivery"]))
+    total_employees = employees.count()
+    active_employees = employees.filter(Account.is_fired == False, Account.employment_status == "active").count()
+    demoted_employees = employees.filter(Account.employment_status == "demoted", Account.is_fired == False).count()
+    fired_employees = employees.filter(Account.is_fired == True).count()
+    
+    # Employees at risk
+    employees_near_demotion = db.query(Account).filter(
+        Account.type.in_(["chef", "delivery"]),
+        Account.is_fired == False,
+        ((Account.complaint_count >= 2) | (Account.rolling_avg_rating < 2.5))
+    ).count()
+    
+    employees_near_firing = db.query(Account).filter(
+        Account.type.in_(["chef", "delivery"]),
+        Account.is_fired == False,
+        Account.times_demoted == 1
+    ).count()
+    
+    employees_bonus_eligible = db.query(Account).filter(
+        Account.type.in_(["chef", "delivery"]),
+        Account.is_fired == False,
+        ((Account.compliment_count >= 2) | (Account.rolling_avg_rating > 4.0))
+    ).count()
+    
+    # Customer counts
+    customers = db.query(Account).filter(Account.type.in_(["customer", "vip", "visitor"]))
+    total_customers = customers.count()
+    vip_customers = customers.filter(Account.type == "vip").count()
+    customers_with_warnings = customers.filter(Account.warnings > 0).count()
+    customers_near_dereg = customers.filter(Account.warnings >= 2, Account.type != "vip").count()
+    deregistered = db.query(Account).filter(Account.is_blacklisted == True).count()
+    
+    # Recent activity (last 7 days)
+    from datetime import timedelta
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    
+    recent_demotions = db.query(AuditLog).filter(
+        AuditLog.action_type.in_(["employee_demoted", "employee_demoted_auto"]),
+        AuditLog.created_at >= week_ago
+    ).count()
+    
+    recent_firings = db.query(AuditLog).filter(
+        AuditLog.action_type.in_(["employee_fired", "employee_fired_auto"]),
+        AuditLog.created_at >= week_ago
+    ).count()
+    
+    recent_bonuses = db.query(AuditLog).filter(
+        AuditLog.action_type.in_(["employee_bonus", "employee_bonus_auto"]),
+        AuditLog.created_at >= week_ago
+    ).count()
+    
+    recent_warnings = db.query(AuditLog).filter(
+        AuditLog.action_type == "customer_warning_added",
+        AuditLog.created_at >= week_ago
+    ).count()
+    
+    recent_deregs = db.query(AuditLog).filter(
+        AuditLog.action_type == "customer_deregistered",
+        AuditLog.created_at >= week_ago
+    ).count()
+    
+    # Pending items
+    pending_complaints = db.query(Complaint).filter(
+        Complaint.status == "pending",
+        Complaint.type == "complaint"
+    ).count()
+    
+    pending_disputes = db.query(Complaint).filter(
+        Complaint.status == "disputed"
+    ).count()
+    
+    pending_compliments = db.query(Complaint).filter(
+        Complaint.status == "pending",
+        Complaint.type == "compliment"
+    ).count()
+    
+    return ReputationDashboardStats(
+        total_employees=total_employees,
+        active_employees=active_employees,
+        demoted_employees=demoted_employees,
+        fired_employees=fired_employees,
+        employees_near_demotion=employees_near_demotion,
+        employees_near_firing=employees_near_firing,
+        employees_bonus_eligible=employees_bonus_eligible,
+        total_customers=total_customers,
+        vip_customers=vip_customers,
+        customers_with_warnings=customers_with_warnings,
+        customers_near_deregistration=customers_near_dereg,
+        deregistered_customers=deregistered,
+        recent_demotions=recent_demotions,
+        recent_firings=recent_firings,
+        recent_bonuses=recent_bonuses,
+        recent_warnings_issued=recent_warnings,
+        recent_deregistrations=recent_deregs,
+        pending_complaints=pending_complaints,
+        pending_disputes=pending_disputes,
+        pending_compliments=pending_compliments
+    )
+
+
+@router.get("/reputation/employees", response_model=EmployeeListWithReputationResponse)
+async def get_employees_with_reputation(
+    type_filter: Optional[str] = Query(None, description="Filter by: chef, delivery"),
+    status_filter: Optional[str] = Query(None, description="Filter by: active, demoted, fired"),
+    at_risk_only: bool = Query(False, description="Only show at-risk employees"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all employees with full reputation data.
+    """
+    query = db.query(Account).filter(Account.type.in_(["chef", "delivery"]))
+    
+    if type_filter:
+        query = query.filter(Account.type == type_filter)
+    
+    if status_filter:
+        if status_filter == "fired":
+            query = query.filter(Account.is_fired == True)
+        else:
+            query = query.filter(
+                Account.is_fired == False,
+                Account.employment_status == status_filter
+            )
+    
+    if at_risk_only:
+        query = query.filter(
+            ((Account.complaint_count >= 2) | 
+             (Account.rolling_avg_rating < 2.5) |
+             (Account.times_demoted >= 1)),
+            Account.is_fired == False
+        )
+    
+    total = query.count()
+    employees = query.order_by(Account.ID.desc()).offset(offset).limit(limit).all()
+    
+    results = []
+    for emp in employees:
+        summary = rep_engine.get_employee_reputation_summary(db, emp)
+        
+        # Build status warning message
+        status_warning = None
+        if summary["near_firing"]:
+            status_warning = "One more demotion will result in termination"
+        elif summary["near_demotion"]:
+            status_warning = "At risk of demotion due to low rating or complaints"
+        
+        results.append(EmployeeReputationSummary(
+            employee_id=summary["employee_id"],
+            email=summary["email"],
+            type=summary["type"],
+            employment_status=summary["employment_status"],
+            rolling_avg_rating=summary["rolling_avg_rating"],
+            total_rating_count=summary["total_rating_count"],
+            complaint_count=summary["complaint_count"],
+            compliment_count=summary["compliment_count"],
+            demotion_count=summary["demotion_count"],
+            bonus_count=summary["bonus_count"],
+            is_fired=summary["is_fired"],
+            wage_cents=summary["wage"],
+            near_demotion=summary["near_demotion"],
+            near_firing=summary["near_firing"],
+            bonus_eligible=summary["bonus_eligible"],
+            status_warning=status_warning
+        ))
+    
+    # Counts
+    chefs_count = sum(1 for e in results if e.type == "chef")
+    delivery_count = sum(1 for e in results if e.type == "delivery")
+    at_risk_count = sum(1 for e in results if e.near_demotion or e.near_firing)
+    bonus_eligible_count = sum(1 for e in results if e.bonus_eligible)
+    
+    return EmployeeListWithReputationResponse(
+        employees=results,
+        total=total,
+        chefs_count=chefs_count,
+        delivery_count=delivery_count,
+        at_risk_count=at_risk_count,
+        bonus_eligible_count=bonus_eligible_count
+    )
+
+
+@router.get("/reputation/employees/{employee_id}", response_model=EmployeeReputationSummary)
+async def get_employee_reputation(
+    employee_id: int,
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get reputation summary for a specific employee.
+    Employees can view their own, managers can view any.
+    """
+    employee = db.query(Account).filter(
+        Account.ID == employee_id,
+        Account.type.in_(["chef", "delivery"])
+    ).first()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found"
+        )
+    
+    # Check permissions
+    if current_user.type != "manager" and current_user.ID != employee_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Can only view your own reputation"
+        )
+    
+    summary = rep_engine.get_employee_reputation_summary(db, employee)
+    
+    status_warning = None
+    if summary["near_firing"]:
+        status_warning = "One more demotion will result in termination"
+    elif summary["near_demotion"]:
+        status_warning = "At risk of demotion due to low rating or complaints"
+    
+    return EmployeeReputationSummary(
+        employee_id=summary["employee_id"],
+        email=summary["email"],
+        type=summary["type"],
+        employment_status=summary["employment_status"],
+        rolling_avg_rating=summary["rolling_avg_rating"],
+        total_rating_count=summary["total_rating_count"],
+        complaint_count=summary["complaint_count"],
+        compliment_count=summary["compliment_count"],
+        demotion_count=summary["demotion_count"],
+        bonus_count=summary["bonus_count"],
+        is_fired=summary["is_fired"],
+        wage_cents=summary["wage"],
+        near_demotion=summary["near_demotion"],
+        near_firing=summary["near_firing"],
+        bonus_eligible=summary["bonus_eligible"],
+        status_warning=status_warning
+    )
+
+
+@router.get("/reputation/customers", response_model=CustomerListWithWarningsResponse)
+async def get_customers_with_warnings(
+    tier_filter: Optional[str] = Query(None, description="Filter by: registered, vip, deregistered"),
+    at_risk_only: bool = Query(False, description="Only show at-risk customers"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all customers with warning data.
+    """
+    query = db.query(Account).filter(Account.type.in_(["customer", "vip", "visitor", "deregistered"]))
+    
+    if tier_filter:
+        if tier_filter == "vip":
+            query = query.filter(Account.type == "vip")
+        elif tier_filter == "deregistered":
+            query = query.filter(Account.is_blacklisted == True)
+        else:
+            query = query.filter(Account.type.in_(["customer", "visitor"]))
+    
+    if at_risk_only:
+        query = query.filter(
+            Account.warnings >= 2,
+            Account.is_blacklisted == False
+        )
+    
+    total = query.count()
+    customers = query.order_by(Account.warnings.desc(), Account.ID.desc()).offset(offset).limit(limit).all()
+    
+    results = []
+    for cust in customers:
+        summary = rep_engine.get_customer_warning_summary(db, cust)
+        
+        # Check for active disputes
+        has_dispute = db.query(Complaint).filter(
+            Complaint.accountID == cust.ID,
+            Complaint.status == "disputed"
+        ).first() is not None
+        
+        results.append(CustomerWarningSummary(
+            customer_id=summary["customer_id"],
+            email=summary["email"],
+            type=summary["type"],
+            customer_tier=summary["customer_tier"],
+            warning_count=summary["warning_count"],
+            threshold=summary["threshold"],
+            is_blacklisted=summary["is_blacklisted"],
+            near_threshold=summary["near_threshold"],
+            has_active_dispute=has_dispute,
+            warning_message=summary["warning_message"]
+        ))
+    
+    vip_count = sum(1 for c in results if c.type == "vip")
+    at_risk_count = sum(1 for c in results if c.near_threshold)
+    dereg_count = sum(1 for c in results if c.is_blacklisted)
+    
+    return CustomerListWithWarningsResponse(
+        customers=results,
+        total=total,
+        vip_count=vip_count,
+        at_risk_count=at_risk_count,
+        deregistered_count=dereg_count
+    )
+
+
+@router.get("/reputation/my-warnings", response_model=CustomerWarningSummary)
+async def get_my_warnings(
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get warning summary for the current customer.
+    Shows warning count, tier, and any alert messages.
+    """
+    if current_user.type not in ["customer", "vip", "visitor"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is for customers only"
+        )
+    
+    summary = rep_engine.get_customer_warning_summary(db, current_user)
+    
+    # Check for active disputes
+    has_dispute = db.query(Complaint).filter(
+        Complaint.accountID == current_user.ID,
+        Complaint.status == "disputed"
+    ).first() is not None
+    
+    return CustomerWarningSummary(
+        customer_id=summary["customer_id"],
+        email=summary["email"],
+        type=summary["type"],
+        customer_tier=summary["customer_tier"],
+        warning_count=summary["warning_count"],
+        threshold=summary["threshold"],
+        is_blacklisted=summary["is_blacklisted"],
+        near_threshold=summary["near_threshold"],
+        has_active_dispute=has_dispute,
+        warning_message=summary["warning_message"]
+    )
+
+
+@router.get("/reputation/my-status", response_model=EmployeeReputationSummary)
+async def get_my_employee_status(
+    current_user: Account = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get reputation status for the current employee (chef or delivery).
+    Shows all reputation metrics and any warnings.
+    """
+    if current_user.type not in ["chef", "delivery"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is for employees only"
+        )
+    
+    summary = rep_engine.get_employee_reputation_summary(db, current_user)
+    
+    status_warning = None
+    if summary["near_firing"]:
+        status_warning = "⚠️ Warning: One more demotion will result in termination"
+    elif summary["near_demotion"]:
+        status_warning = "⚠️ Warning: You are at risk of demotion"
+    elif summary["bonus_eligible"]:
+        status_warning = "🌟 Great work! You're eligible for a bonus"
+    
+    return EmployeeReputationSummary(
+        employee_id=summary["employee_id"],
+        email=summary["email"],
+        type=summary["type"],
+        employment_status=summary["employment_status"],
+        rolling_avg_rating=summary["rolling_avg_rating"],
+        total_rating_count=summary["total_rating_count"],
+        complaint_count=summary["complaint_count"],
+        compliment_count=summary["compliment_count"],
+        demotion_count=summary["demotion_count"],
+        bonus_count=summary["bonus_count"],
+        is_fired=summary["is_fired"],
+        wage_cents=summary["wage"],
+        near_demotion=summary["near_demotion"],
+        near_firing=summary["near_firing"],
+        bonus_eligible=summary["bonus_eligible"],
+        status_warning=status_warning
+    )
+
+
+@router.post("/reputation/evaluate-all")
+async def evaluate_all_reputation(
+    current_user: Account = Depends(require_manager),
+    db: Session = Depends(get_db)
+):
+    """
+    Run reputation evaluation for all employees.
+    Checks all rules and applies demotions, firings, and bonuses as needed.
+    """
+    results = rep_engine.run_all_employee_evaluations(db, current_user.ID)
+    db.commit()
+    
+    demoted = sum(1 for r in results if r.get("demoted"))
+    fired = sum(1 for r in results if r.get("fired"))
+    bonuses = sum(1 for r in results if r.get("bonus_awarded"))
+    
+    return {
+        "message": f"Evaluated {len(results)} employees",
+        "summary": {
+            "total_evaluated": len(results),
+            "demotions": demoted,
+            "firings": fired,
+            "bonuses_awarded": bonuses
+        },
+        "details": results
     }

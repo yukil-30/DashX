@@ -1160,6 +1160,221 @@ class VIPHistoryResponse(BaseModel):
     total: int
 
 
+# ============================================================
+# Reputation System Schemas
+# ============================================================
+
+class EmployeeReputationSummary(BaseModel):
+    """Complete reputation summary for an employee (chef/delivery)"""
+    employee_id: int
+    email: str
+    type: str  # chef or delivery
+    employment_status: str = "active"  # active, demoted, fired
+    
+    # Rating metrics
+    rolling_avg_rating: float = 0.0
+    total_rating_count: int = 0
+    
+    # Complaint/compliment tracking
+    complaint_count: int = 0
+    compliment_count: int = 0
+    
+    # Status tracking
+    demotion_count: int = 0
+    bonus_count: int = 0
+    is_fired: bool = False
+    wage_cents: Optional[int] = None
+    
+    # Risk assessment
+    near_demotion: bool = False
+    near_firing: bool = False
+    bonus_eligible: bool = False
+    
+    # Warning message for UI
+    status_warning: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CustomerWarningSummary(BaseModel):
+    """Warning summary for a customer"""
+    customer_id: int
+    email: str
+    type: str  # customer, vip, deregistered
+    customer_tier: str = "registered"  # registered, vip, deregistered
+    
+    # Warning tracking
+    warning_count: int = 0
+    threshold: int = 3  # Warning threshold for this account type
+    is_blacklisted: bool = False
+    
+    # Status flags
+    near_threshold: bool = False
+    has_active_dispute: bool = False
+    
+    # Message for UI
+    warning_message: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ReputationRuleResult(BaseModel):
+    """Result of a rule engine evaluation"""
+    action_type: str  # demoted, fired, bonus_awarded, vip_downgraded, deregistered
+    target_id: int
+    target_email: str
+    details: dict = {}
+    
+
+class ReputationUpdateResponse(BaseModel):
+    """Response from a reputation update operation"""
+    message: str
+    target_id: int
+    old_value: Optional[float] = None
+    new_value: Optional[float] = None
+    rules_triggered: List[ReputationRuleResult] = []
+    
+
+class EmployeeListWithReputationResponse(BaseModel):
+    """List of employees with full reputation data for manager dashboard"""
+    employees: List[EmployeeReputationSummary]
+    total: int
+    chefs_count: int
+    delivery_count: int
+    at_risk_count: int  # Near demotion/firing
+    bonus_eligible_count: int
+
+
+class CustomerListWithWarningsResponse(BaseModel):
+    """List of customers with warning data for manager dashboard"""
+    customers: List[CustomerWarningSummary]
+    total: int
+    vip_count: int
+    at_risk_count: int  # 2+ warnings
+    deregistered_count: int
+
+
+class ReputationDashboardStats(BaseModel):
+    """Aggregated reputation statistics for manager dashboard"""
+    # Employee stats
+    total_employees: int = 0
+    active_employees: int = 0
+    demoted_employees: int = 0
+    fired_employees: int = 0
+    employees_near_demotion: int = 0
+    employees_near_firing: int = 0
+    employees_bonus_eligible: int = 0
+    
+    # Customer stats
+    total_customers: int = 0
+    vip_customers: int = 0
+    customers_with_warnings: int = 0
+    customers_near_deregistration: int = 0
+    deregistered_customers: int = 0
+    
+    # Recent activity
+    recent_demotions: int = 0
+    recent_firings: int = 0
+    recent_bonuses: int = 0
+    recent_warnings_issued: int = 0
+    recent_deregistrations: int = 0
+    
+    # Pending items
+    pending_complaints: int = 0
+    pending_disputes: int = 0
+    pending_compliments: int = 0
+
+
+class ReputationActionRequest(BaseModel):
+    """Request to manually trigger a reputation action"""
+    action: Literal["demote", "fire", "bonus", "warn", "reset_warnings"] = Field(
+        ..., description="Action to perform"
+    )
+    target_id: int = Field(..., description="Target account ID")
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for action")
+    amount_cents: Optional[int] = Field(None, description="Amount for wage adjustments")
+
+
+class ReputationActionResponse(BaseModel):
+    """Response from a manual reputation action"""
+    message: str
+    action: str
+    target_id: int
+    target_email: str
+    previous_status: str
+    new_status: str
+    details: dict = {}
+    audit_log_id: int
+
+
+class DisputeDetailResponse(BaseModel):
+    """Detailed dispute information for manager resolution"""
+    complaint_id: int
+    complaint_type: str  # complaint or compliment
+    description: str
+    
+    # Filer info
+    filer_id: int
+    filer_email: str
+    filer_type: str
+    filer_warnings: int = 0
+    
+    # Target info
+    target_id: Optional[int] = None
+    target_email: Optional[str] = None
+    target_type: Optional[str] = None
+    target_warnings: int = 0
+    target_complaint_count: int = 0
+    target_compliment_count: int = 0
+    target_avg_rating: Optional[float] = None
+    
+    # Order context
+    order_id: Optional[int] = None
+    order_status: Optional[str] = None
+    
+    # Dispute details
+    status: str
+    disputed: bool = False
+    dispute_reason: Optional[str] = None
+    disputed_at: Optional[str] = None
+    created_at: Optional[str] = None
+    
+    # Resolution preview - what will happen
+    resolution_preview: dict = {}
+
+
+class DisputeResolveRequest(BaseModel):
+    """Request to resolve a dispute"""
+    resolution: Literal["upheld", "dismissed"] = Field(
+        ..., description="upheld = complaint valid (target warned), dismissed = complaint invalid (filer warned)"
+    )
+    notes: Optional[str] = Field(None, max_length=1000, description="Resolution notes")
+
+
+class DisputeResolveResponse(BaseModel):
+    """Response after resolving a dispute"""
+    message: str
+    complaint_id: int
+    resolution: str
+    
+    # Who was affected
+    warning_applied_to: Optional[int] = None
+    new_warning_count: Optional[int] = None
+    
+    # Status changes
+    vip_downgraded: bool = False
+    customer_deregistered: bool = False
+    employee_demoted: bool = False
+    employee_fired: bool = False
+    bonus_awarded: bool = False
+    
+    # Audit
+    audit_log_id: int
+    actions_taken: List[str] = []
+
+
 # Rebuild models with forward references
 CustomerDashboardResponse.model_rebuild()
 

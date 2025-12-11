@@ -395,3 +395,262 @@ export interface TransactionListResponse {
   transactions: TransactionItem[];
   total: number;
 }
+
+// ============================================================
+// Reputation System Types
+// ============================================================
+
+export interface EmployeeReputationSummary {
+  employee_id: number;
+  email: string;
+  type: 'chef' | 'delivery';
+  employment_status: 'active' | 'demoted' | 'fired';
+  
+  // Rating metrics
+  rolling_avg_rating: number;
+  total_rating_count: number;
+  
+  // Complaint/compliment tracking
+  complaint_count: number;
+  compliment_count: number;
+  
+  // Status tracking
+  demotion_count: number;
+  bonus_count: number;
+  is_fired: boolean;
+  wage_cents: number | null;
+  
+  // Risk assessment
+  near_demotion: boolean;
+  near_firing: boolean;
+  bonus_eligible: boolean;
+  
+  // Warning message for UI
+  status_warning: string | null;
+}
+
+export interface CustomerWarningSummary {
+  customer_id: number;
+  email: string;
+  type: 'customer' | 'vip' | 'visitor' | 'deregistered';
+  customer_tier: 'registered' | 'vip' | 'deregistered';
+  
+  // Warning tracking
+  warning_count: number;
+  threshold: number;
+  is_blacklisted: boolean;
+  
+  // Status flags
+  near_threshold: boolean;
+  has_active_dispute: boolean;
+  
+  // Message for UI
+  warning_message: string | null;
+}
+
+export interface ReputationDashboardStats {
+  // Employee stats
+  total_employees: number;
+  active_employees: number;
+  demoted_employees: number;
+  fired_employees: number;
+  employees_near_demotion: number;
+  employees_near_firing: number;
+  employees_bonus_eligible: number;
+  
+  // Customer stats
+  total_customers: number;
+  vip_customers: number;
+  customers_with_warnings: number;
+  customers_near_deregistration: number;
+  deregistered_customers: number;
+  
+  // Recent activity
+  recent_demotions: number;
+  recent_firings: number;
+  recent_bonuses: number;
+  recent_warnings_issued: number;
+  recent_deregistrations: number;
+  
+  // Pending items
+  pending_complaints: number;
+  pending_disputes: number;
+  pending_compliments: number;
+}
+
+export interface EmployeeListWithReputationResponse {
+  employees: EmployeeReputationSummary[];
+  total: number;
+  chefs_count: number;
+  delivery_count: number;
+  at_risk_count: number;
+  bonus_eligible_count: number;
+}
+
+export interface CustomerListWithWarningsResponse {
+  customers: CustomerWarningSummary[];
+  total: number;
+  vip_count: number;
+  at_risk_count: number;
+  deregistered_count: number;
+}
+
+export interface Complaint {
+  id: number;
+  accountID: number | null;
+  type: 'complaint' | 'compliment';
+  description: string;
+  filer: number;
+  filer_email: string | null;
+  about_email: string | null;
+  order_id: number | null;
+  status: 'pending' | 'resolved' | 'disputed';
+  resolution: 'dismissed' | 'warning_issued' | null;
+  resolved_by: number | null;
+  resolved_at: string | null;
+  created_at: string | null;
+  disputed: boolean;
+  dispute_reason: string | null;
+  disputed_at: string | null;
+  target_type: 'chef' | 'delivery' | 'customer' | null;
+}
+
+export interface ComplaintListResponse {
+  complaints: Complaint[];
+  total: number;
+  unresolved_count: number;
+}
+
+export interface DisputeDetailResponse {
+  complaint_id: number;
+  complaint_type: 'complaint' | 'compliment';
+  description: string;
+  
+  // Filer info
+  filer_id: number;
+  filer_email: string;
+  filer_type: string;
+  filer_warnings: number;
+  
+  // Target info
+  target_id: number | null;
+  target_email: string | null;
+  target_type: string | null;
+  target_warnings: number;
+  target_complaint_count: number;
+  target_compliment_count: number;
+  target_avg_rating: number | null;
+  
+  // Order context
+  order_id: number | null;
+  order_status: string | null;
+  
+  // Dispute details
+  status: string;
+  disputed: boolean;
+  dispute_reason: string | null;
+  disputed_at: string | null;
+  created_at: string | null;
+  
+  // Resolution preview
+  resolution_preview: Record<string, unknown>;
+}
+
+export interface DisputeResolveRequest {
+  resolution: 'upheld' | 'dismissed';
+  notes?: string;
+}
+
+export interface DisputeResolveResponse {
+  message: string;
+  complaint_id: number;
+  resolution: string;
+  warning_applied_to: number | null;
+  new_warning_count: number | null;
+  vip_downgraded: boolean;
+  customer_deregistered: boolean;
+  employee_demoted: boolean;
+  employee_fired: boolean;
+  bonus_awarded: boolean;
+  audit_log_id: number;
+  actions_taken: string[];
+}
+
+export interface ComplaintCreateRequest {
+  about_user_id?: number;
+  order_id?: number;
+  type: 'complaint' | 'compliment';
+  text: string;
+  target_type?: 'chef' | 'delivery' | 'customer';
+}
+
+export interface DisputeRequest {
+  reason: string;
+}
+
+// Reputation Dashboard Types
+export interface ReputationDashboardStats {
+  // Employee stats
+  total_employees: number;
+  active_employees: number;
+  demoted_employees: number;
+  fired_employees: number;
+  employees_near_demotion: number;
+  employees_near_firing: number;
+  employees_bonus_eligible: number;
+  recent_bonuses: number;
+  recent_firings: number;
+  
+  // Customer stats
+  total_customers: number;
+  vip_customers: number;
+  customers_with_warnings: number;
+  customers_near_deregistration: number;
+  deregistered_customers: number;
+  recent_deregistrations: number;
+  
+  // Complaint stats
+  pending_complaints: number;
+  pending_disputes: number;
+}
+
+export interface EmployeeReputationSummary {
+  employee_id: number;
+  email: string;
+  type: 'chef' | 'delivery';
+  rolling_avg_rating: number;
+  total_ratings: number;
+  complaint_count: number;
+  compliment_count: number;
+  demotion_count: number;
+  employment_status: 'active' | 'demoted' | 'fired';
+  is_fired: boolean;
+  near_demotion: boolean;
+  near_firing: boolean;
+  bonus_eligible: boolean;
+}
+
+export interface CustomerWarningSummary {
+  customer_id: number;
+  email: string;
+  customer_tier: 'customer' | 'vip';
+  warning_count: number;
+  threshold: number;
+  near_threshold: boolean;
+  is_blacklisted: boolean;
+  has_active_dispute: boolean;
+}
+
+export interface EmployeeListWithReputationResponse {
+  employees: EmployeeReputationSummary[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface CustomerListWithWarningsResponse {
+  customers: CustomerWarningSummary[];
+  total: number;
+  page: number;
+  per_page: number;
+}

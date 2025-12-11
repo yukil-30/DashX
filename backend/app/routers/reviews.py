@@ -2,6 +2,7 @@
 Reviews Router
 Handles dish reviews and delivery reviews for completed orders.
 UPDATED: Allow reviews on 'paid' orders for testing/development
+Integrates with reputation engine for automatic rule evaluation.
 """
 
 import logging
@@ -23,6 +24,7 @@ from app.schemas import (
     DishReviewCreateRequest, DishReviewResponse, DishReviewListResponse,
     DeliveryReviewCreateRequest, DeliveryReviewResponse
 )
+from app import reputation_engine as rep_engine
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,17 @@ async def create_dish_review(
     
     dish.average_rating = round(new_average, 2)
     dish.reviews = new_count
+    
+    # Trigger reputation engine for chef rating update
+    rule_results = None
+    if dish.chefID:
+        chef = db.query(Account).filter(Account.ID == dish.chefID).first()
+        if chef:
+            # Recalculate chef's rolling average from all their dishes
+            rep_engine.recalculate_chef_rating_from_dishes(db, chef)
+            
+            # Evaluate rules (may trigger demotion/bonus)
+            rule_results = rep_engine.evaluate_employee_rules(db, chef, current_user.ID)
     
     db.commit()
     db.refresh(review)
@@ -286,11 +299,19 @@ async def create_delivery_review(
     if request.on_time:
         delivery_rating.on_time_deliveries += 1
     
+    # Trigger reputation engine for delivery person rating update
+    rule_results = None
+    delivery_person = db.query(Account).filter(Account.ID == bid.deliveryPersonID).first()
+    if delivery_person:
+        # Update the rolling average on the account as well
+        rep_engine.update_employee_rating(db, delivery_person, request.rating, current_user.ID)
+        # Sync from DeliveryRating table
+        rep_engine.recalculate_delivery_rating(db, delivery_person)
+        # Evaluate rules
+        rule_results = rep_engine.evaluate_employee_rules(db, delivery_person, current_user.ID)
+    
     db.commit()
     db.refresh(review)
-    
-    # Get delivery person email
-    delivery_person = db.query(Account).filter(Account.ID == bid.deliveryPersonID).first()
     
     logger.info(f"Delivery review created: order={request.order_id}, delivery_person={bid.deliveryPersonID}, rating={request.rating}")
     
